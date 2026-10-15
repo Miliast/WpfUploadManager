@@ -33,7 +33,7 @@ Standardmäßig läuft die App im **Simulationsmodus**: Uploads werden nur simul
 
 | Bereich | Was die App bietet |
 |---|---|
-| Explorer (links) | Moderner Dateibaum mit abgerundeter Auswahl, animiertem Chevron, Einrückungslinien, farbigen Ordnern, Dateityp-Icons und Anzahl der Einträge. Ordner öffnen (Strg+O), Unterordner werden erst beim Aufklappen geladen, Aktualisieren (F5) behält aufgeklappte Ordner bei, Filter „Nur passende Dateitypen“ |
+| Explorer (links) | Moderner Dateibaum (wiederverwendbares 2-Dateien-Control) mit abgerundeter Auswahl, animiertem Chevron, Einrückungslinien, farbigen Ordnern und Dateitypen sowie Anzahl der Einträge. Ordner öffnen (Strg+O), Unterordner werden erst beim Aufklappen geladen, Aktualisieren (F5) behält aufgeklappte Ordner bei, Filter „Nur passende Dateitypen“ |
 | Zuweisen | Drag & Drop aus dem Explorer oder aus Windows, Doppelklick/Enter (wählt automatisch das passende Feld), „Durchsuchen …“, „Markierte übernehmen“ |
 | Upload-Felder (rechts) | Status je Feld (leer, bereit, ungültig, wird hochgeladen, hochgeladen), Fehlertext direkt am Feld, Pflicht- und optionale Felder, Fortschritt pro Datei |
 | Upload | Startet erst, wenn alle Pflichtfelder gültig sind (Strg+Enter). Abbrechen mit Esc. Vor dem Senden werden alle Dateien noch einmal geprüft. |
@@ -100,9 +100,10 @@ WpfUploadManager.slnx
 │       ├── App.xaml(.cs)            # Composition Root: Generic Host, DI, globale Fehlerbehandlung
 │       ├── Views/                   # MainWindow, FileExplorerView, UploadSlotView
 │       ├── Behaviors/               # FileDrop (Drag & Drop als Attached Behavior)
-│       ├── Converters/              # Sichtbarkeit, Spaltenlayout, Ordnerfarben/Datei-Icons, Einrückung
+│       ├── Controls/                # FileTreeView.xaml + .xaml.cs – wiederverwendbarer Dateibaum (2 Dateien)
+│       ├── Converters/              # Sichtbarkeit, responsives Spaltenlayout
 │       ├── Services/                # WPF-Implementierungen (Dialoge, Snackbar, Theme)
-│       └── Resources/               # Styles.xaml (gemeinsame Styles), FileTree.xaml (Design des Dateibaums)
+│       └── Resources/Styles.xaml    # Gemeinsame Styles (nutzen WPF-UI-Theme-Ressourcen)
 └── tests/
     └── UploadManager.Core.Tests/    # xUnit v3 für Validierung, ViewModels und Upload-Ablauf
 ```
@@ -114,6 +115,37 @@ Wichtige Entscheidungen:
 - **Abstraktionen für Dialoge, Benachrichtigungen, Theme und Upload.** So lassen sich die ViewModels mit Fakes testen und das Backend austauschen.
 - **Ein Request für alle Dateien**, weil die Dateien fachlich zusammengehören. Wenn jede Datei einzeln gesendet werden soll, reicht eine neue `IUploadService`-Implementierung.
 - **Central Package Management** (`Directory.Packages.props`), Nullable aktiviert und Warnungen als Fehler (`Directory.Build.props`).
+
+## Dateibaum in eigenen Projekten nutzen – nur 2 Dateien
+
+Der Dateibaum (links) ist ein eigenständiges Control ohne Abhängigkeiten:
+
+- [`src/UploadManager.App/Controls/FileTreeView.xaml`](src/UploadManager.App/Controls/FileTreeView.xaml) – das komplette Design
+- [`src/UploadManager.App/Controls/FileTreeView.xaml.cs`](src/UploadManager.App/Controls/FileTreeView.xaml.cs) – die komplette Logik
+
+Beide Dateien in ein beliebiges WPF-Projekt (.NET 8+) kopieren – fertig. Kein NuGet-Paket, keine weiteren Styles oder Converter nötig.
+
+> **English:** The file tree is a self-contained control. Copy these two files into any WPF project (.NET 8+) – no packages, styles or converters required.
+
+```xml
+<Window xmlns:tree="clr-namespace:ModernFileTree" …>
+    <tree:FileTreeView RootPath="C:\Data"
+                       ExtensionFilter=".pdf;.docx"
+                       FileActivated="OnFileActivated" />
+</Window>
+```
+
+| Eigenschaft / Event | Bedeutung |
+|---|---|
+| `RootPath` | Ordner, dessen Inhalt angezeigt wird |
+| `ExtensionFilter` | Erlaubte Endungen, z. B. `.pdf;.docx` (leer = alle) |
+| `FileFilter` | Optionales `Func<string, bool>` für eigene Filter |
+| `SelectedPath` / `SelectedItem` | Auswahl (`SelectedPath` ist two-way bindbar) |
+| `FileActivated` / `FileActivatedCommand` | Doppelklick oder Enter auf eine Datei |
+| `EmptyText`, `LoadingText` | Texte für leere Ordner und Ladezeilen |
+| `Refresh()` | Neu laden – aufgeklappte Ordner und Auswahl bleiben erhalten |
+
+Funktionen: Lazy Loading, Anzahl der Einträge je Ordner, Dateigrößen, farbige Ordner/Dateitypen, Einrückungslinien, animierter Chevron, Hover-/Auswahl-Animation, Drag & Drop von Dateien (Standard-`FileDrop`-Format), Virtualisierung für große Ordner. Die Farben sind neutral transparent und funktionieren auf hellem und dunklem Hintergrund; die Schrift nutzt die `Foreground` des Fensters.
 
 ## Entwicklung
 

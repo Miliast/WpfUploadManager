@@ -6,9 +6,6 @@
     <!--  Converters  -->
     <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
     <converters:BooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" IsInverted="True" />
-    <converters:FolderColorConverter x:Key="FolderColorConverter" />
-    <converters:FileSymbolConverter x:Key="FileSymbolConverter" />
-    <converters:FileColorConverter x:Key="FileColorConverter" />
     <converters:WidthToColumnsConverter
         x:Key="WidthToColumnsConverter"
         Breakpoint="760"

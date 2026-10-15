@@ -41,7 +41,7 @@ public partial class App : Application
             MainWindow = window;
             window.Show();
 
-            await viewModel.RestoreSessionAsync();
+            viewModel.RestoreSession();
         }
         catch (OptionsValidationException ex)
         {

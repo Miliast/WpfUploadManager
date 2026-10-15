@@ -46,7 +46,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Explorer = new FileExplorerViewModel(fileDialogService, notificationService, IsSupportedByAnySlot, _settings.ShowOnlySupportedFiles);
-        Explorer.FileActivated += (_, node) => AssignToMatchingSlot(node.FullPath);
+        Explorer.FileActivated += (_, path) => AssignToMatchingSlot(path);
         Explorer.PropertyChanged += OnExplorerPropertyChanged;
 
         StatusText = "Bereit";
@@ -114,11 +114,11 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>
     /// Re-opens the folder from the last session, if it still exists.
     /// </summary>
-    public async Task RestoreSessionAsync()
+    public void RestoreSession()
     {
         if (!string.IsNullOrWhiteSpace(_settings.LastFolder) && Directory.Exists(_settings.LastFolder))
         {
-            await Explorer.LoadAsync(_settings.LastFolder);
+            Explorer.Open(_settings.LastFolder);
         }
     }
 
@@ -165,14 +165,14 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanAssignSelectedFile))]
     private void AssignSelectedFile(UploadSlotViewModel? slot)
     {
-        if (slot is not null && Explorer.SelectedFile is { } file)
+        if (slot is not null && Explorer.SelectedFilePath is { } path)
         {
-            Assign(slot, file.FullPath);
+            Assign(slot, path);
         }
     }
 
     private bool CanAssignSelectedFile(UploadSlotViewModel? slot) =>
-        !IsUploading && slot is not null && Explorer.SelectedFile is not null;
+        !IsUploading && slot is not null && Explorer.SelectedFilePath is not null;
 
     private bool CanUpload() => !IsUploading && IsReadyForUpload;
 
@@ -328,7 +328,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         switch (e.PropertyName)
         {
-            case nameof(FileExplorerViewModel.SelectedNode):
+            case nameof(FileExplorerViewModel.SelectedPath):
                 AssignSelectedFileCommand.NotifyCanExecuteChanged();
                 break;
 

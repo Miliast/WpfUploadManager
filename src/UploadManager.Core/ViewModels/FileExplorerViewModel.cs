@@ -1,14 +1,12 @@
-using System.Collections.ObjectModel;
-using System.Security;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using UploadManager.Core.IO;
 using UploadManager.Core.Services;
 
 namespace UploadManager.Core.ViewModels;
 
 /// <summary>
-/// The file tree on the left side of the main window.
+/// State of the file explorer on the left side. The tree itself (loading, expanding, drag &amp; drop)
+/// is handled by the reusable <c>FileTreeView</c> control, which binds to this view model.
 /// </summary>
 public sealed partial class FileExplorerViewModel : ObservableObject
 {
@@ -28,11 +26,13 @@ public sealed partial class FileExplorerViewModel : ObservableObject
         ShowOnlySupportedFiles = showOnlySupportedFiles;
     }
 
-    /// <summary>Raised when a file is double-clicked or confirmed with Enter.</summary>
-    public event EventHandler<FileSystemNodeViewModel>? FileActivated;
+    /// <summary>Raised with the file path when a file is double-clicked or confirmed with Enter.</summary>
+    public event EventHandler<string>? FileActivated;
 
-    public ObservableCollection<FileSystemNodeViewModel> RootNodes { get; } = [];
+    /// <summary>Raised when the tree should reload its content (expanded folders are kept).</summary>
+    public event EventHandler? RefreshRequested;
 
+    /// <summary>Opened folder; its contents are the top level of the tree.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRoot))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
@@ -42,154 +42,65 @@ public sealed partial class FileExplorerViewModel : ObservableObject
     [ObservableProperty]
     public partial string? RootName { get; private set; }
 
-    /// <summary><see langword="true"/> if the opened folder has no (matching) entries.</summary>
+    /// <summary>Full path of the entry selected in the tree (file or folder).</summary>
     [ObservableProperty]
-    public partial bool IsRootEmpty { get; private set; }
+    [NotifyPropertyChangedFor(nameof(SelectedFilePath))]
+    public partial string? SelectedPath { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SelectedFile))]
-    public partial FileSystemNodeViewModel? SelectedNode { get; set; }
-
-    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FileFilter))]
     public partial bool ShowOnlySupportedFiles { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsLoading { get; private set; }
 
     public bool HasRoot => RootPath is not null;
 
-    public FileSystemNodeViewModel? SelectedFile => SelectedNode is { IsFile: true } ? SelectedNode : null;
+    /// <summary>The selected entry if it is a file, otherwise <see langword="null"/>.</summary>
+    public string? SelectedFilePath => SelectedPath is not null && File.Exists(SelectedPath) ? SelectedPath : null;
 
-    /// <summary>
-    /// Shows the contents of <paramref name="path"/> as top level of the tree. Expanded folders and the
-    /// selection are kept when the same folder is loaded again (refresh).
-    /// </summary>
-    public async Task<bool> LoadAsync(string path)
+    /// <summary>File filter for the tree: only files that fit an upload field, or <see langword="null"/> for all files.</summary>
+    public Func<string, bool>? FileFilter => ShowOnlySupportedFiles ? _isSupportedFile : null;
+
+    /// <summary>Shows the contents of <paramref name="path"/> in the tree.</summary>
+    public bool Open(string path)
     {
-        if (!Directory.Exists(path))
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
         {
             _notificationService.ShowWarning("Ordner nicht gefunden", $"„{path}“ existiert nicht oder ist nicht erreichbar.");
             return false;
         }
 
         var directory = new DirectoryInfo(path);
-        var fileFilter = ShowOnlySupportedFiles ? _isSupportedFile : null;
-        var isRefresh = string.Equals(directory.FullName, RootPath, StringComparison.OrdinalIgnoreCase);
-        var expandedPaths = isRefresh ? GetExpandedPaths(RootNodes).ToHashSet(StringComparer.OrdinalIgnoreCase) : [];
-        var selectedPath = isRefresh ? SelectedNode?.FullPath : null;
 
-        IsLoading = true;
-        try
+        if (string.Equals(directory.FullName, RootPath, StringComparison.OrdinalIgnoreCase))
         {
-            IReadOnlyList<FileSystemEntry> entries;
-            try
-            {
-                entries = await Task.Run(() => FileSystemReader.GetChildren(directory.FullName, fileFilter));
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
-            {
-                _notificationService.ShowError("Ordner kann nicht geöffnet werden", ex.Message);
-                return false;
-            }
-
-            SelectedNode = null;
-            RootNodes.Clear();
-            foreach (var entry in entries)
-            {
-                RootNodes.Add(new FileSystemNodeViewModel(entry, parent: null, fileFilter));
-            }
-
-            RootPath = directory.FullName;
-            RootName = string.IsNullOrEmpty(directory.Name) ? directory.FullName : directory.Name;
-            IsRootEmpty = RootNodes.Count == 0;
-
-            await RestoreExpansionAsync(RootNodes, expandedPaths);
-
-            if (selectedPath is not null && FindLoadedNode(RootNodes, selectedPath) is { } selected)
-            {
-                selected.IsSelected = true;
-                SelectedNode = selected;
-            }
-        }
-        finally
-        {
-            IsLoading = false;
+            RefreshRequested?.Invoke(this, EventArgs.Empty);
+            return true;
         }
 
+        SelectedPath = null;
+        RootName = string.IsNullOrEmpty(directory.Name) ? directory.FullName : directory.Name;
+        RootPath = directory.FullName;
         return true;
     }
 
     [RelayCommand]
-    private async Task OpenFolderAsync()
+    private void OpenFolder()
     {
         var folder = _fileDialogService.PickFolder(RootPath);
         if (folder is not null)
         {
-            await LoadAsync(folder);
+            Open(folder);
         }
     }
 
     [RelayCommand(CanExecute = nameof(HasRoot))]
-    private async Task RefreshAsync()
-    {
-        if (RootPath is not null)
-        {
-            await LoadAsync(RootPath);
-        }
-    }
+    private void Refresh() => RefreshRequested?.Invoke(this, EventArgs.Empty);
 
     [RelayCommand]
-    private void ActivateNode(FileSystemNodeViewModel? node)
+    private void ActivateFile(string? path)
     {
-        node ??= SelectedNode;
-        if (node is { IsFile: true })
+        if (!string.IsNullOrEmpty(path) && File.Exists(path))
         {
-            FileActivated?.Invoke(this, node);
+            FileActivated?.Invoke(this, path);
         }
-    }
-
-    partial void OnShowOnlySupportedFilesChanged(bool value)
-    {
-        if (RootPath is not null)
-        {
-            _ = LoadAsync(RootPath);
-        }
-    }
-
-    private static IEnumerable<string> GetExpandedPaths(IEnumerable<FileSystemNodeViewModel> nodes) =>
-        nodes.Where(n => n is { IsDirectory: true, IsExpanded: true })
-            .SelectMany(n => GetExpandedPaths(n.Children).Prepend(n.FullPath));
-
-    private static async Task RestoreExpansionAsync(IEnumerable<FileSystemNodeViewModel> nodes, HashSet<string> expandedPaths)
-    {
-        if (expandedPaths.Count == 0)
-        {
-            return;
-        }
-
-        foreach (var node in nodes.Where(n => n.IsDirectory && expandedPaths.Contains(n.FullPath)).ToList())
-        {
-            await node.LoadChildrenAsync();
-            node.IsExpanded = true;
-            await RestoreExpansionAsync(node.Children, expandedPaths);
-        }
-    }
-
-    private static FileSystemNodeViewModel? FindLoadedNode(IEnumerable<FileSystemNodeViewModel> nodes, string fullPath)
-    {
-        foreach (var node in nodes)
-        {
-            if (string.Equals(node.FullPath, fullPath, StringComparison.OrdinalIgnoreCase))
-            {
-                return node;
-            }
-
-            if (node.IsExpanded && FindLoadedNode(node.Children, fullPath) is { } match)
-            {
-                return match;
-            }
-        }
-
-        return null;
     }
 }

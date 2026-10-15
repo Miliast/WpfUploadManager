@@ -10,7 +10,6 @@
                 <ui:ThemesDictionary Theme="Light" />
                 <ui:ControlsDictionary />
                 <ResourceDictionary Source="pack://application:,,,/UploadManager;component/Resources/Styles.xaml" />
-                <ResourceDictionary Source="pack://application:,,,/UploadManager;component/Resources/FileTree.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

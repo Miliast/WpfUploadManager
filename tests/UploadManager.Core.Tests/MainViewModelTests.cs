@@ -193,15 +193,15 @@ public sealed class MainViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task AssignSelectedFile_assigns_the_selected_tree_file()
+    public void AssignSelectedFile_assigns_the_selected_tree_file()
     {
-        _temp.CreateFile("doc.pdf");
+        var path = _temp.CreateFile("doc.pdf");
         var viewModel = CreateViewModel();
-        await viewModel.Explorer.LoadAsync(_temp.Path);
+        viewModel.Explorer.Open(_temp.Path);
         var slot = viewModel.Slots[0];
 
         Assert.False(viewModel.AssignSelectedFileCommand.CanExecute(slot));
-        viewModel.Explorer.SelectedNode = viewModel.Explorer.RootNodes.Single(n => n.Name == "doc.pdf");
+        viewModel.Explorer.SelectedPath = path;
         Assert.True(viewModel.AssignSelectedFileCommand.CanExecute(slot));
 
         viewModel.AssignSelectedFileCommand.Execute(slot);
@@ -210,13 +210,13 @@ public sealed class MainViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task Double_click_in_the_tree_assigns_to_a_matching_slot()
+    public void Double_click_in_the_tree_assigns_to_a_matching_slot()
     {
-        _temp.CreateFile("settings.json");
+        var path = _temp.CreateFile("settings.json");
         var viewModel = CreateViewModel();
-        await viewModel.Explorer.LoadAsync(_temp.Path);
+        viewModel.Explorer.Open(_temp.Path);
 
-        viewModel.Explorer.ActivateNodeCommand.Execute(viewModel.Explorer.RootNodes[0]);
+        viewModel.Explorer.ActivateFileCommand.Execute(path);
 
         Assert.Equal("settings.json", viewModel.Slots[2].FileName);
     }
@@ -247,14 +247,14 @@ public sealed class MainViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task Last_folder_is_saved_and_restored()
+    public void Last_folder_is_saved_and_restored()
     {
         var first = CreateViewModel();
-        await first.Explorer.LoadAsync(_temp.Path);
+        first.Explorer.Open(_temp.Path);
         Assert.Equal(Path.GetFullPath(_temp.Path), _settings.Settings.LastFolder);
 
         var second = CreateViewModel();
-        await second.RestoreSessionAsync();
+        second.RestoreSession();
 
         Assert.Equal(Path.GetFullPath(_temp.Path), second.Explorer.RootPath);
     }

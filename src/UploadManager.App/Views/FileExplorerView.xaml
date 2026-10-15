@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:tree="clr-namespace:ModernFileTree"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:vm="clr-namespace:UploadManager.Core.ViewModels;assembly=UploadManager.Core"
     d:DataContext="{d:DesignInstance Type=vm:FileExplorerViewModel}"
@@ -45,7 +46,7 @@
                             VerticalAlignment="Center"
                             Filled="True"
                             FontSize="18"
-                            Foreground="{Binding RootName, Converter={StaticResource FolderColorConverter}}"
+                            Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                             Symbol="Folder20" />
                         <TextBlock
                             Grid.Column="1"
@@ -108,121 +109,19 @@
                 Fill="{DynamicResource DividerStrokeColorDefaultBrush}"
                 Visibility="{Binding HasRoot, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-            <!--  Tree  -->
-            <TreeView
+            <!--  Tree: reusable two-file control (Controls/FileTreeView.xaml + .xaml.cs)  -->
+            <tree:FileTreeView
                 x:Name="FileTree"
                 Grid.Row="3"
                 AutomationProperties.Name="Dateibaum"
-                ItemContainerStyle="{StaticResource FileTreeViewItemStyle}"
-                ItemsSource="{Binding RootNodes}"
-                KeyDown="OnTreeKeyDown"
-                MouseDoubleClick="OnTreeMouseDoubleClick"
-                PreviewMouseLeftButtonDown="OnTreePreviewMouseLeftButtonDown"
-                PreviewMouseMove="OnTreePreviewMouseMove"
-                SelectedItemChanged="OnTreeSelectedItemChanged"
-                Style="{StaticResource FileTreeViewStyle}"
-                Visibility="{Binding HasRoot, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <TreeView.ItemTemplate>
-                    <HierarchicalDataTemplate DataType="{x:Type vm:FileSystemNodeViewModel}" ItemsSource="{Binding Children}">
-                        <Grid>
-                            <Grid.Style>
-                                <Style TargetType="Grid">
-                                    <Setter Property="ToolTip" Value="{Binding FullPath}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                            <Setter Property="ToolTip" Value="{x:Null}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Grid.Style>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <!--  Icon: colored folder or file type icon  -->
-                            <Grid
-                                Width="18"
-                                Height="18"
-                                Margin="0,0,10,0"
-                                VerticalAlignment="Center">
-                                <ui:SymbolIcon
-                                    Filled="True"
-                                    FontSize="17"
-                                    Foreground="{Binding Name, Converter={StaticResource FolderColorConverter}}"
-                                    Symbol="Folder20"
-                                    Visibility="{Binding IsDirectory, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <ui:SymbolIcon
-                                    Filled="True"
-                                    FontSize="17"
-                                    Foreground="{Binding Extension, Converter={StaticResource FileColorConverter}}"
-                                    Symbol="{Binding Extension, Converter={StaticResource FileSymbolConverter}}"
-                                    Visibility="{Binding IsFile, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            </Grid>
-
-                            <TextBlock
-                                Grid.Column="1"
-                                VerticalAlignment="Center"
-                                Text="{Binding Name}"
-                                TextTrimming="CharacterEllipsis">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                                <Setter Property="FontStyle" Value="Italic" />
-                                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-
-                            <StackPanel
-                                Grid.Column="2"
-                                Margin="10,0,0,0"
-                                VerticalAlignment="Center"
-                                Orientation="Horizontal">
-                                <TextBlock
-                                    Margin="0,0,8,0"
-                                    VerticalAlignment="Center"
-                                    Style="{StaticResource ErrorTextStyle}"
-                                    Text="{Binding ErrorMessage}"
-                                    Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <TextBlock
-                                    VerticalAlignment="Center"
-                                    FontSize="12"
-                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                    Text="{Binding DetailText}" />
-                            </StackPanel>
-                        </Grid>
-                    </HierarchicalDataTemplate>
-                </TreeView.ItemTemplate>
-            </TreeView>
-
-            <!--  Empty state: opened folder has no (matching) entries  -->
-            <StackPanel
-                Grid.Row="3"
-                Margin="24"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Visibility="{Binding IsRootEmpty, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <ui:SymbolIcon
-                    HorizontalAlignment="Center"
-                    FontSize="40"
-                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                    Symbol="DocumentSearch24" />
-                <TextBlock
-                    Margin="0,10,0,4"
-                    HorizontalAlignment="Center"
-                    Style="{StaticResource SectionTitleTextStyle}"
-                    Text="Nichts gefunden" />
-                <TextBlock
-                    MaxWidth="240"
-                    Style="{StaticResource BodySecondaryTextStyle}"
-                    Text="Der Ordner enthält keine passenden Dateien. Schalte den Filter aus oder wähle einen anderen Ordner."
-                    TextAlignment="Center" />
-            </StackPanel>
+                EmptyText="Keine passenden Dateien in diesem Ordner. Schalte den Filter aus oder wähle einen anderen Ordner."
+                FileActivatedCommand="{Binding ActivateFileCommand}"
+                FileFilter="{Binding FileFilter}"
+                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                LoadingText="Wird geladen …"
+                RootPath="{Binding RootPath}"
+                SelectedPath="{Binding SelectedPath}"
+                Visibility="{Binding HasRoot, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
             <!--  Empty state: no folder opened yet  -->
             <StackPanel
