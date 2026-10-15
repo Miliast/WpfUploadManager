@@ -1,0 +1,208 @@
+<ui:FluentWindow
+    x:Class="UploadManager.App.Views.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:views="clr-namespace:UploadManager.App.Views"
+    xmlns:vm="clr-namespace:UploadManager.Core.ViewModels;assembly=UploadManager.Core"
+    Title="Upload Manager"
+    Width="1280"
+    Height="820"
+    MinWidth="900"
+    MinHeight="600"
+    d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+    ExtendsContentIntoTitleBar="True"
+    WindowBackdropType="Mica"
+    WindowCornerPreference="Round"
+    WindowStartupLocation="CenterScreen"
+    mc:Ignorable="d">
+
+    <ui:FluentWindow.InputBindings>
+        <KeyBinding Command="{Binding Explorer.OpenFolderCommand}" Gesture="Ctrl+O" />
+        <KeyBinding Key="F5" Command="{Binding Explorer.RefreshCommand}" />
+        <KeyBinding Command="{Binding UploadCommand}" Gesture="Ctrl+Enter" />
+        <KeyBinding Key="Escape" Command="{Binding UploadCancelCommand}" />
+    </ui:FluentWindow.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar
+            Title="Upload Manager"
+            Grid.Row="0"
+            Icon="{ui:SymbolIcon CloudArrowUp24}">
+            <ui:TitleBar.TrailingContent>
+                <ui:Button
+                    Margin="0,0,8,0"
+                    Padding="6"
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="Design umschalten"
+                    Appearance="Transparent"
+                    BorderThickness="0"
+                    Command="{Binding ToggleThemeCommand}"
+                    ToolTip="Hell/Dunkel umschalten">
+                    <Grid>
+                        <ui:SymbolIcon
+                            FontSize="16"
+                            Symbol="WeatherSunny24"
+                            Visibility="{Binding IsDarkTheme, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <ui:SymbolIcon
+                            FontSize="16"
+                            Symbol="WeatherMoon24"
+                            Visibility="{Binding IsDarkTheme, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                    </Grid>
+                </ui:Button>
+            </ui:TitleBar.TrailingContent>
+        </ui:TitleBar>
+
+        <Grid Grid.Row="1" Margin="16,4,16,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition
+                    Width="360"
+                    MinWidth="260"
+                    MaxWidth="640" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" MinWidth="420" />
+            </Grid.ColumnDefinitions>
+
+            <!--  Left: file explorer  -->
+            <views:FileExplorerView Grid.Column="0" DataContext="{Binding Explorer}" />
+
+            <GridSplitter
+                Grid.Column="1"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Background="Transparent"
+                Focusable="False"
+                ResizeBehavior="PreviousAndNext"
+                ResizeDirection="Columns"
+                ToolTip="Breite anpassen" />
+
+            <!--  Right: upload fields  -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Margin="4,0,4,12">
+                    <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="Dateien hochladen" />
+                    <TextBlock
+                        Margin="0,4,0,0"
+                        Style="{StaticResource BodySecondaryTextStyle}"
+                        Text="Weise jedem Feld die passende Datei zu – per Drag &amp; Drop aus dem Explorer links oder aus Windows, per Doppelklick im Explorer oder über „Durchsuchen“." />
+                </StackPanel>
+
+                <ScrollViewer
+                    x:Name="SlotScrollViewer"
+                    Grid.Row="1"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <ItemsControl
+                        Margin="-6,0"
+                        AutomationProperties.Name="Upload-Felder"
+                        Focusable="False"
+                        ItemsSource="{Binding Slots}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="{Binding ActualWidth, ElementName=SlotScrollViewer, Converter={StaticResource WidthToColumnsConverter}}" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:UploadSlotViewModel}">
+                                <views:UploadSlotView Margin="6" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!--  Action bar  -->
+                <Border
+                    Grid.Row="2"
+                    Margin="0,12,0,0"
+                    Padding="16,12"
+                    Style="{StaticResource PanelBorderStyle}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock FontWeight="SemiBold" Text="{Binding ReadinessText}" />
+                            <ProgressBar
+                                Margin="0,8,0,0"
+                                Maximum="1"
+                                Minimum="0"
+                                Visibility="{Binding IsUploading, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                Value="{Binding OverallProgress, Mode=OneWay}" />
+                        </StackPanel>
+
+                        <StackPanel
+                            Grid.Column="1"
+                            Margin="16,0,0,0"
+                            Orientation="Horizontal">
+                            <ui:Button
+                                Margin="0,0,8,0"
+                                Command="{Binding ResetCommand}"
+                                Content="Zurücksetzen"
+                                Icon="{ui:SymbolIcon ArrowReset24}" />
+                            <ui:Button
+                                Margin="0,0,8,0"
+                                Command="{Binding UploadCancelCommand}"
+                                Content="Abbrechen"
+                                Icon="{ui:SymbolIcon Dismiss24}"
+                                ToolTip="Upload abbrechen (Esc)"
+                                Visibility="{Binding IsUploading, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ui:Button
+                                MinWidth="140"
+                                Appearance="Primary"
+                                Command="{Binding UploadCommand}"
+                                Content="Hochladen"
+                                Icon="{ui:SymbolIcon CloudArrowUp24}"
+                                ToolTip="Alle Dateien hochladen (Strg+Enter)" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!--  Status bar  -->
+        <Border
+            Grid.Row="2"
+            Padding="16,6"
+            BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,1,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    Style="{StaticResource CaptionTextStyle}"
+                    Text="{Binding StatusText}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
+                <TextBlock
+                    Grid.Column="1"
+                    Margin="16,0,0,0"
+                    Style="{StaticResource CaptionTextStyle}"
+                    Text="{Binding UploadTargetText}"
+                    TextWrapping="NoWrap" />
+            </Grid>
+        </Border>
+
+        <ui:SnackbarPresenter
+            x:Name="SnackbarPresenter"
+            Grid.Row="1"
+            Grid.RowSpan="2"
+            VerticalAlignment="Bottom" />
+    </Grid>
+</ui:FluentWindow>

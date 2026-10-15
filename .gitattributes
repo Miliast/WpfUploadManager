@@ -1,0 +1,15 @@
+# Normalize line endings; keep Windows-specific files in CRLF.
+* text=auto
+*.cs      text diff=csharp
+*.xaml    text
+*.csproj  text
+*.slnx    text
+*.props   text
+*.json    text
+*.md      text
+*.sln     text eol=crlf
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+*.ps1     text eol=crlf
+*.ico     binary
+*.png     binary
