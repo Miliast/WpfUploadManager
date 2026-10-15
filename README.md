@@ -1,10 +1,21 @@
 # Upload Manager (WPF)
 
+[![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+[![License: MIT-0](https://img.shields.io/badge/License-MIT--0-blue.svg)](LICENSE)
+
+> **English:** Windows desktop app (.NET 10, WPF, MVVM, Fluent design) with a file tree on the left and four
+> configurable, validated upload fields on the right. Free for private and commercial use under
+> [MIT-0](LICENSE) – use, modify, rebrand and sell it, no attribution required.
+
 Desktop-App für Windows: Links wählst du Dateien in einem **Datei-Explorer (TreeView)** aus, rechts weist du sie **vier Upload-Feldern** zu. Jedes Feld prüft Dateityp und Größe. Hochgeladen wird erst, wenn alle Pflichtfelder gültig belegt sind.
 
 Technik: **.NET 10 · WPF · MVVM (CommunityToolkit.Mvvm) · Fluent-Design (WPF-UI) · Generic Host (DI, Konfiguration, Logging) · xUnit**
 
-## Schnellstart
+## Download (ohne Entwicklungsumgebung)
+
+Unter [**Releases**](../../releases) liegt eine fertige ZIP-Datei für Windows 10/11 (x64). Entpacken und `UploadManager.exe` starten – eine .NET-Installation ist nicht nötig. Die Upload-Felder lassen sich danach in der mitgelieferten `appsettings.json` anpassen.
+
+## Schnellstart (für Entwickler)
 
 Voraussetzungen: Windows 10/11 und das [.NET 10 SDK](https://dotnet.microsoft.com/download). Visual Studio 2022 (17.14+) oder 2026 bzw. Rider sind optional.
 
@@ -116,9 +127,22 @@ Das Core-Projekt und die Tests lassen sich auch unter Linux und macOS bauen und 
 
 Die CI (GitHub Actions, `.github/workflows/ci.yml`) baut die App auf `windows-latest`, führt die Tests aus und stellt die fertige App als Artefakt `UploadManager-win-x64` bereit. Dependabot hält NuGet-Pakete und Actions aktuell.
 
+**Release erstellen:** Einen Tag pushen, z. B. `git tag v1.0.0 && git push origin v1.0.0`. `.github/workflows/release.yml` baut daraufhin eine eigenständige Single-File-`UploadManager.exe` (inkl. .NET-Runtime) und hängt sie als ZIP an ein neues GitHub-Release.
+
 ## Mögliche nächste Schritte
 
 - Die Platzhalter-Felder in `appsettings.json` durch die echten Dateien ersetzen
 - Backend-Endpunkt anbinden, ggf. mit Authentifizierung (z. B. Bearer-Token über einen `DelegatingHandler` am `HttpClient`)
 - Datei-Logging (z. B. Serilog) und ein Installer (MSIX/Velopack)
 - Lokalisierung über `.resx`, falls weitere Sprachen nötig sind
+
+## Lizenz
+
+Der Quellcode steht unter **[MIT-0 (MIT No Attribution)](LICENSE)**. Das heißt:
+
+- ✅ frei nutzbar – privat, im Unternehmen und kommerziell
+- ✅ ändern, umbenennen, eigenes Branding, in eigene Produkte einbauen und verkaufen
+- ✅ **keine Namensnennung nötig** – der Lizenztext muss nicht mitgeliefert werden
+- ⚠️ ohne Gewährleistung oder Haftung
+
+Die verwendeten Bibliotheken (WPF UI, CommunityToolkit.Mvvm, Microsoft.Extensions) stehen unter MIT. Wer die **kompilierte App** weitergibt, muss deren Lizenzhinweise beilegen – das ist bereits erledigt: [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) wird automatisch neben die `.exe` kopiert.
