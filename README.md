@@ -118,7 +118,12 @@ Wichtige Entscheidungen:
 
 ## Dateibaum in eigenen Projekten nutzen – nur 2 Dateien
 
-Der Dateibaum (links) ist ein eigenständiges Control ohne Abhängigkeiten:
+Der Dateibaum (links) ist ein eigenständiges Control ohne Abhängigkeiten. Als Design-Vorlage diente dieser Entwurf:
+
+<p align="center">
+  <img src="docs/images/file-tree-design-reference.png" alt="Design-Vorlage für den Dateibaum: dunkler Baum mit farbigen Ordnern, Chevrons, Einrückungslinien und Anzahl der Einträge" width="320">
+</p>
+
 
 - [`src/UploadManager.App/Controls/FileTreeView.xaml`](src/UploadManager.App/Controls/FileTreeView.xaml) – das komplette Design
 - [`src/UploadManager.App/Controls/FileTreeView.xaml.cs`](src/UploadManager.App/Controls/FileTreeView.xaml.cs) – die komplette Logik
