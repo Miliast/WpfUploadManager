@@ -127,7 +127,7 @@ Das Core-Projekt und die Tests lassen sich auch unter Linux und macOS bauen und 
 
 Die CI (GitHub Actions, `.github/workflows/ci.yml`) baut die App auf `windows-latest`, führt die Tests aus und stellt die fertige App als Artefakt `UploadManager-win-x64` bereit. Dependabot hält NuGet-Pakete und Actions aktuell.
 
-**Release erstellen:** Einen Tag pushen, z. B. `git tag v1.0.0 && git push origin v1.0.0`. `.github/workflows/release.yml` baut daraufhin eine eigenständige Single-File-`UploadManager.exe` (inkl. .NET-Runtime) und hängt sie als ZIP an ein neues GitHub-Release.
+**Release erstellen:** Auf GitHub unter *Actions → Release → Run workflow* eine Version eingeben (z. B. `1.0.0`) – oder einen Tag pushen (`git tag v1.0.0 && git push origin v1.0.0`). `.github/workflows/release.yml` testet, baut eine eigenständige Single-File-`UploadManager.exe` (inkl. .NET-Runtime) und hängt sie als ZIP an ein neues GitHub-Release. Versionen mit `0.` am Anfang oder `-` (z. B. `1.0.0-beta`) werden als Pre-Release markiert.
 
 ## Mögliche nächste Schritte
 

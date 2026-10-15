@@ -1,9 +1,18 @@
 name: Release
 
-# Push a tag like "v1.0.0" to build a ready-to-run Windows app and attach it to a GitHub release.
+# Builds a ready-to-run Windows app and attaches it to a GitHub release. Start it either by
+#  - clicking "Run workflow" on the Actions tab and entering a version (e.g. 1.0.0), or
+#  - pushing a tag like "v1.0.0".
+# Versions starting with "0." or containing "-" (e.g. 1.0.0-beta) are marked as pre-release.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without leading v (e.g. 1.0.0)"
+        required: true
+        default: "0.1.0"
 
 permissions:
   contents: write
@@ -11,6 +20,7 @@ permissions:
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
+  TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
 
 jobs:
   release:
@@ -18,6 +28,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      - name: Validate version
+        id: version
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { throw "Invalid version '$version' (expected e.g. 1.0.0 or 1.0.0-beta)" }
+          "version=$version" >> $env:GITHUB_OUTPUT
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -28,9 +45,8 @@ jobs:
 
       - name: Publish (self-contained, single file – no .NET installation needed)
         env:
-          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $version = $env:TAG.TrimStart('v')
           dotnet publish src/UploadManager.App/UploadManager.App.csproj `
             --configuration Release `
             --runtime win-x64 `
@@ -39,14 +55,18 @@ jobs:
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:EnableCompressionInSingleFile=true `
             -p:DebugType=none `
-            -p:Version=$version `
+            -p:Version=$env:VERSION `
             --output publish
-          Compress-Archive -Path publish/* -DestinationPath "UploadManager-$version-win-x64.zip"
+          Compress-Archive -Path publish/* -DestinationPath "UploadManager-$env:VERSION-win-x64.zip"
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $version = $env:TAG.TrimStart('v')
-          gh release create $env:TAG "UploadManager-$version-win-x64.zip" --title "Upload Manager $version" --generate-notes
+          $flags = @()
+          if ($env:VERSION.StartsWith('0.') -or $env:VERSION.Contains('-')) { $flags += '--prerelease' }
+          gh release create $env:TAG "UploadManager-$env:VERSION-win-x64.zip" `
+            --target $env:GITHUB_SHA `
+            --title "Upload Manager $env:VERSION" `
+            --generate-notes @flags
