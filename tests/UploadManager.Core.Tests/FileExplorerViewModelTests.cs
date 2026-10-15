@@ -25,9 +25,9 @@ public sealed class FileExplorerViewModelTests : IDisposable
 
         Assert.True(await explorer.LoadAsync(_temp.Path));
 
-        var root = Assert.Single(explorer.RootNodes);
-        Assert.True(root.IsExpanded);
-        Assert.Equal(["alpha", "zeta", "a.txt", "b.pdf"], root.Children.Select(c => c.Name));
+        Assert.Equal(["alpha", "zeta", "a.txt", "b.pdf"], explorer.RootNodes.Select(c => c.Name));
+        Assert.Equal(Path.GetFileName(_temp.Path), explorer.RootName);
+        Assert.False(explorer.IsRootEmpty);
         Assert.True(explorer.HasRoot);
         Assert.True(explorer.RefreshCommand.CanExecute(null));
     }
@@ -41,7 +41,7 @@ public sealed class FileExplorerViewModelTests : IDisposable
 
         await explorer.LoadAsync(_temp.Path);
 
-        Assert.Equal(["keep.pdf"], explorer.RootNodes[0].Children.Select(c => c.Name));
+        Assert.Equal(["keep.pdf"], explorer.RootNodes.Select(c => c.Name));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class FileExplorerViewModelTests : IDisposable
         var explorer = CreateExplorer();
         await explorer.LoadAsync(_temp.Path);
 
-        var folder = Assert.Single(explorer.RootNodes[0].Children);
+        var folder = Assert.Single(explorer.RootNodes);
         Assert.True(Assert.Single(folder.Children).IsPlaceholder);
 
         await folder.LoadChildrenAsync();
@@ -92,7 +92,7 @@ public sealed class FileExplorerViewModelTests : IDisposable
         var activated = new List<string>();
         explorer.FileActivated += (_, node) => activated.Add(node.Name);
 
-        foreach (var node in explorer.RootNodes[0].Children)
+        foreach (var node in explorer.RootNodes)
         {
             explorer.ActivateNodeCommand.Execute(node);
         }
@@ -106,14 +106,14 @@ public sealed class FileExplorerViewModelTests : IDisposable
         _temp.CreateFile(Path.Combine("sub", "one.pdf"));
         var explorer = CreateExplorer();
         await explorer.LoadAsync(_temp.Path);
-        var folder = explorer.RootNodes[0].Children[0];
+        var folder = explorer.RootNodes[0];
         await folder.LoadChildrenAsync();
         folder.IsExpanded = true;
 
         _temp.CreateFile(Path.Combine("sub", "two.pdf"));
         await explorer.RefreshCommand.ExecuteAsync(null);
 
-        var refreshed = explorer.RootNodes[0].Children[0];
+        var refreshed = explorer.RootNodes[0];
         Assert.True(refreshed.IsExpanded);
         Assert.Equal(["one.pdf", "two.pdf"], refreshed.Children.Select(c => c.Name));
     }
@@ -126,10 +126,81 @@ public sealed class FileExplorerViewModelTests : IDisposable
         var explorer = CreateExplorer();
         await explorer.LoadAsync(_temp.Path);
 
-        explorer.SelectedNode = explorer.RootNodes[0].Children[0];
+        explorer.SelectedNode = explorer.RootNodes[0];
         Assert.Null(explorer.SelectedFile);
 
-        explorer.SelectedNode = explorer.RootNodes[0].Children[1];
+        explorer.SelectedNode = explorer.RootNodes[1];
         Assert.NotNull(explorer.SelectedFile);
+    }
+
+    [Fact]
+    public async Task Folders_show_their_item_count_and_files_their_size()
+    {
+        _temp.CreateFile(Path.Combine("docs", "a.pdf"));
+        _temp.CreateFile(Path.Combine("docs", "b.txt"));
+        _temp.CreateDirectory(Path.Combine("docs", "nested"));
+        _temp.CreateFile("file.pdf", 2048);
+        var explorer = CreateExplorer();
+
+        await explorer.LoadAsync(_temp.Path);
+
+        var folder = explorer.RootNodes[0];
+        Assert.Equal(3, folder.ChildCount);
+        Assert.Equal("3", folder.DetailText);
+        Assert.Equal(".pdf", explorer.RootNodes[1].Extension);
+        Assert.Equal(explorer.RootNodes[1].SizeText, explorer.RootNodes[1].DetailText);
+    }
+
+    [Fact]
+    public async Task Item_count_respects_the_file_filter()
+    {
+        _temp.CreateFile(Path.Combine("docs", "a.pdf"));
+        _temp.CreateFile(Path.Combine("docs", "b.txt"));
+        var explorer = CreateExplorer(showOnlySupported: true);
+
+        await explorer.LoadAsync(_temp.Path);
+
+        Assert.Equal(1, explorer.RootNodes[0].ChildCount);
+    }
+
+    [Fact]
+    public async Task Empty_folders_have_no_expander_placeholder()
+    {
+        _temp.CreateDirectory("empty");
+        var explorer = CreateExplorer();
+
+        await explorer.LoadAsync(_temp.Path);
+
+        Assert.Equal(0, explorer.RootNodes[0].ChildCount);
+        Assert.Empty(explorer.RootNodes[0].Children);
+    }
+
+    [Fact]
+    public async Task Depth_increases_with_nesting()
+    {
+        _temp.CreateFile(Path.Combine("a", "b", "c.pdf"));
+        var explorer = CreateExplorer();
+        await explorer.LoadAsync(_temp.Path);
+
+        var a = explorer.RootNodes[0];
+        await a.LoadChildrenAsync();
+        var b = a.Children[0];
+        await b.LoadChildrenAsync();
+
+        Assert.Equal(0, a.Depth);
+        Assert.Equal(1, b.Depth);
+        Assert.Equal(2, b.Children[0].Depth);
+    }
+
+    [Fact]
+    public async Task Empty_root_folder_is_reported()
+    {
+        var explorer = CreateExplorer(showOnlySupported: true);
+        _temp.CreateFile("ignored.txt");
+
+        await explorer.LoadAsync(_temp.Path);
+
+        Assert.True(explorer.HasRoot);
+        Assert.True(explorer.IsRootEmpty);
     }
 }

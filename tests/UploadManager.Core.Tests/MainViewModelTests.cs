@@ -201,7 +201,7 @@ public sealed class MainViewModelTests : IDisposable
         var slot = viewModel.Slots[0];
 
         Assert.False(viewModel.AssignSelectedFileCommand.CanExecute(slot));
-        viewModel.Explorer.SelectedNode = viewModel.Explorer.RootNodes[0].Children.Single(n => n.Name == "doc.pdf");
+        viewModel.Explorer.SelectedNode = viewModel.Explorer.RootNodes.Single(n => n.Name == "doc.pdf");
         Assert.True(viewModel.AssignSelectedFileCommand.CanExecute(slot));
 
         viewModel.AssignSelectedFileCommand.Execute(slot);
@@ -216,7 +216,7 @@ public sealed class MainViewModelTests : IDisposable
         var viewModel = CreateViewModel();
         await viewModel.Explorer.LoadAsync(_temp.Path);
 
-        viewModel.Explorer.ActivateNodeCommand.Execute(viewModel.Explorer.RootNodes[0].Children[0]);
+        viewModel.Explorer.ActivateNodeCommand.Execute(viewModel.Explorer.RootNodes[0]);
 
         Assert.Equal("settings.json", viewModel.Slots[2].FileName);
     }

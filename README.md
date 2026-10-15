@@ -22,7 +22,7 @@ Standardmäßig läuft die App im **Simulationsmodus**: Uploads werden nur simul
 
 | Bereich | Was die App bietet |
 |---|---|
-| Explorer (links) | Ordner öffnen (Strg+O), Unterordner werden erst beim Aufklappen geladen, Aktualisieren (F5) behält aufgeklappte Ordner bei, Filter „Nur passende Dateitypen“ |
+| Explorer (links) | Moderner Dateibaum mit abgerundeter Auswahl, animiertem Chevron, Einrückungslinien, farbigen Ordnern, Dateityp-Icons und Anzahl der Einträge. Ordner öffnen (Strg+O), Unterordner werden erst beim Aufklappen geladen, Aktualisieren (F5) behält aufgeklappte Ordner bei, Filter „Nur passende Dateitypen“ |
 | Zuweisen | Drag & Drop aus dem Explorer oder aus Windows, Doppelklick/Enter (wählt automatisch das passende Feld), „Durchsuchen …“, „Markierte übernehmen“ |
 | Upload-Felder (rechts) | Status je Feld (leer, bereit, ungültig, wird hochgeladen, hochgeladen), Fehlertext direkt am Feld, Pflicht- und optionale Felder, Fortschritt pro Datei |
 | Upload | Startet erst, wenn alle Pflichtfelder gültig sind (Strg+Enter). Abbrechen mit Esc. Vor dem Senden werden alle Dateien noch einmal geprüft. |
@@ -89,9 +89,9 @@ WpfUploadManager.slnx
 │       ├── App.xaml(.cs)            # Composition Root: Generic Host, DI, globale Fehlerbehandlung
 │       ├── Views/                   # MainWindow, FileExplorerView, UploadSlotView
 │       ├── Behaviors/               # FileDrop (Drag & Drop als Attached Behavior)
-│       ├── Converters/              # Sichtbarkeit, responsives Spaltenlayout
+│       ├── Converters/              # Sichtbarkeit, Spaltenlayout, Ordnerfarben/Datei-Icons, Einrückung
 │       ├── Services/                # WPF-Implementierungen (Dialoge, Snackbar, Theme)
-│       └── Resources/Styles.xaml    # Gemeinsame Styles (nutzen WPF-UI-Theme-Ressourcen)
+│       └── Resources/               # Styles.xaml (gemeinsame Styles), FileTree.xaml (Design des Dateibaums)
 └── tests/
     └── UploadManager.Core.Tests/    # xUnit v3 für Validierung, ViewModels und Upload-Ablauf
 ```

@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Security;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using UploadManager.Core.IO;
 using UploadManager.Core.Services;
 
 namespace UploadManager.Core.ViewModels;
@@ -36,6 +38,14 @@ public sealed partial class FileExplorerViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     public partial string? RootPath { get; private set; }
 
+    /// <summary>Display name of the opened folder.</summary>
+    [ObservableProperty]
+    public partial string? RootName { get; private set; }
+
+    /// <summary><see langword="true"/> if the opened folder has no (matching) entries.</summary>
+    [ObservableProperty]
+    public partial bool IsRootEmpty { get; private set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedFile))]
     public partial FileSystemNodeViewModel? SelectedNode { get; set; }
@@ -51,8 +61,8 @@ public sealed partial class FileExplorerViewModel : ObservableObject
     public FileSystemNodeViewModel? SelectedFile => SelectedNode is { IsFile: true } ? SelectedNode : null;
 
     /// <summary>
-    /// Shows <paramref name="path"/> as root of the tree. Expanded folders and the selection are kept
-    /// when the same root is loaded again (refresh).
+    /// Shows the contents of <paramref name="path"/> as top level of the tree. Expanded folders and the
+    /// selection are kept when the same folder is loaded again (refresh).
     /// </summary>
     public async Task<bool> LoadAsync(string path)
     {
@@ -62,22 +72,38 @@ public sealed partial class FileExplorerViewModel : ObservableObject
             return false;
         }
 
-        var root = FileSystemNodeViewModel.CreateRoot(path, ShowOnlySupportedFiles ? _isSupportedFile : null);
-        var isRefresh = string.Equals(root.FullPath, RootPath, StringComparison.OrdinalIgnoreCase);
+        var directory = new DirectoryInfo(path);
+        var fileFilter = ShowOnlySupportedFiles ? _isSupportedFile : null;
+        var isRefresh = string.Equals(directory.FullName, RootPath, StringComparison.OrdinalIgnoreCase);
         var expandedPaths = isRefresh ? GetExpandedPaths(RootNodes).ToHashSet(StringComparer.OrdinalIgnoreCase) : [];
         var selectedPath = isRefresh ? SelectedNode?.FullPath : null;
 
         IsLoading = true;
         try
         {
+            IReadOnlyList<FileSystemEntry> entries;
+            try
+            {
+                entries = await Task.Run(() => FileSystemReader.GetChildren(directory.FullName, fileFilter));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
+            {
+                _notificationService.ShowError("Ordner kann nicht geöffnet werden", ex.Message);
+                return false;
+            }
+
             SelectedNode = null;
             RootNodes.Clear();
-            RootPath = root.FullPath;
-            RootNodes.Add(root);
+            foreach (var entry in entries)
+            {
+                RootNodes.Add(new FileSystemNodeViewModel(entry, parent: null, fileFilter));
+            }
 
-            await root.LoadChildrenAsync();
-            root.IsExpanded = true;
-            await RestoreExpansionAsync(root, expandedPaths);
+            RootPath = directory.FullName;
+            RootName = string.IsNullOrEmpty(directory.Name) ? directory.FullName : directory.Name;
+            IsRootEmpty = RootNodes.Count == 0;
+
+            await RestoreExpansionAsync(RootNodes, expandedPaths);
 
             if (selectedPath is not null && FindLoadedNode(RootNodes, selectedPath) is { } selected)
             {
@@ -134,18 +160,18 @@ public sealed partial class FileExplorerViewModel : ObservableObject
         nodes.Where(n => n is { IsDirectory: true, IsExpanded: true })
             .SelectMany(n => GetExpandedPaths(n.Children).Prepend(n.FullPath));
 
-    private static async Task RestoreExpansionAsync(FileSystemNodeViewModel node, HashSet<string> expandedPaths)
+    private static async Task RestoreExpansionAsync(IEnumerable<FileSystemNodeViewModel> nodes, HashSet<string> expandedPaths)
     {
         if (expandedPaths.Count == 0)
         {
             return;
         }
 
-        foreach (var child in node.Children.Where(c => c.IsDirectory && expandedPaths.Contains(c.FullPath)).ToList())
+        foreach (var node in nodes.Where(n => n.IsDirectory && expandedPaths.Contains(n.FullPath)).ToList())
         {
-            await child.LoadChildrenAsync();
-            child.IsExpanded = true;
-            await RestoreExpansionAsync(child, expandedPaths);
+            await node.LoadChildrenAsync();
+            node.IsExpanded = true;
+            await RestoreExpansionAsync(node.Children, expandedPaths);
         }
     }
 
