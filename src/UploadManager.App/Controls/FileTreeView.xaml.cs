@@ -21,6 +21,22 @@ using System.Windows.Threading;
 
 namespace ModernFileTree;
 
+/// <summary>Color scheme of <see cref="FileTreeView"/>. The colors are defined in FileTreeView.xaml.</summary>
+public enum FileTreeAppearance
+{
+    /// <summary>Light sidebar: #F2F2F2 background, hairline border, soft gray text (default).</summary>
+    Light,
+
+    /// <summary>Dark sidebar: #121212 background, raised selection with top highlight and shadow.</summary>
+    Dark,
+
+    /// <summary>
+    /// Transparent background without border; light or dark colors are chosen from the inherited
+    /// <see cref="Control.Foreground"/>. Use it to embed the tree into panels of a themed app.
+    /// </summary>
+    Auto,
+}
+
 /// <summary>
 /// File tree with lazy loading, item counts, colored folders, file type colors, indent guides,
 /// smooth hover/selection and drag &amp; drop of files to other controls or applications.
@@ -33,6 +49,7 @@ namespace ModernFileTree;
 ///   <item><see cref="SelectedPath"/> (two-way bindable) and <see cref="SelectedItem"/>.</item>
 ///   <item><see cref="FileActivated"/> / <see cref="FileActivatedCommand"/>: double-click or Enter on a file.</item>
 ///   <item><see cref="Refresh"/>: reloads and keeps expanded folders and the selection.</item>
+///   <item><see cref="Appearance"/>: <c>Light</c> (default), <c>Dark</c> or <c>Auto</c>.</item>
 /// </list>
 /// </remarks>
 public partial class FileTreeView : UserControl
@@ -61,6 +78,10 @@ public partial class FileTreeView : UserControl
         nameof(EmptyText), typeof(string), typeof(FileTreeView),
         new PropertyMetadata("No items", (d, _) => ((FileTreeView)d).UpdateMessage()));
 
+    public static readonly DependencyProperty AppearanceProperty = DependencyProperty.Register(
+        nameof(Appearance), typeof(FileTreeAppearance), typeof(FileTreeView),
+        new PropertyMetadata(FileTreeAppearance.Light, (d, _) => ((FileTreeView)d).ApplyAppearance()));
+
     public static readonly DependencyProperty LoadingTextProperty = DependencyProperty.Register(
         nameof(LoadingText), typeof(string), typeof(FileTreeView), new PropertyMetadata("Loading …"));
 
@@ -79,6 +100,13 @@ public partial class FileTreeView : UserControl
 
     public static readonly DependencyProperty MessageProperty = MessagePropertyKey.DependencyProperty;
 
+    // Palette entries defined in FileTreeView.xaml as "FileTree.Light.<Name>" and "FileTree.Dark.<Name>".
+    private static readonly string[] PaletteKeys =
+    [
+        "Background", "Border", "Text", "TextSelected", "Detail", "Chevron",
+        "Guide", "Hover", "Selected", "SelectedBorder", "SelectedShadow",
+    ];
+
     private int _loadVersion;
     private bool _reloadScheduled;
     private bool _reloadKeepsState = true;
@@ -91,6 +119,7 @@ public partial class FileTreeView : UserControl
     public FileTreeView()
     {
         InitializeComponent();
+        ApplyAppearance();
     }
 
     /// <summary>Raised when a file is double-clicked or confirmed with Enter.</summary>
@@ -141,6 +170,13 @@ public partial class FileTreeView : UserControl
         set => SetValue(EmptyTextProperty, value);
     }
 
+    /// <summary>Color scheme: <c>Light</c> (default), <c>Dark</c> or <c>Auto</c> (follows the inherited Foreground).</summary>
+    public FileTreeAppearance Appearance
+    {
+        get => (FileTreeAppearance)GetValue(AppearanceProperty);
+        set => SetValue(AppearanceProperty, value);
+    }
+
     /// <summary>Text of the placeholder row while a folder is loading.</summary>
     public string LoadingText
     {
@@ -157,6 +193,44 @@ public partial class FileTreeView : UserControl
 
     /// <summary>Reloads the tree; expanded folders and the selection are kept.</summary>
     public void Refresh() => ScheduleReload(keepState: true);
+
+    protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+
+        if (e.Property == ForegroundProperty && Appearance == FileTreeAppearance.Auto)
+        {
+            ApplyAppearance();
+        }
+    }
+
+    /// <summary>Copies the active palette ("FileTree.Light.*" or "FileTree.Dark.*") to the "FileTree.*" keys.</summary>
+    private void ApplyAppearance()
+    {
+        var appearance = Appearance;
+        var useDark = appearance == FileTreeAppearance.Dark
+            || (appearance == FileTreeAppearance.Auto && IsLight(Foreground));
+        var scheme = useDark ? "Dark" : "Light";
+
+        foreach (var key in PaletteKeys)
+        {
+            if (Resources[$"FileTree.{scheme}.{key}"] is { } value)
+            {
+                Resources[$"FileTree.{key}"] = value;
+            }
+        }
+
+        if (appearance == FileTreeAppearance.Auto)
+        {
+            // Blend into the surrounding panel.
+            Resources["FileTree.Background"] = Brushes.Transparent;
+            Resources["FileTree.Border"] = Brushes.Transparent;
+        }
+    }
+
+    /// <summary>Light text means a dark background, and vice versa.</summary>
+    private static bool IsLight(Brush? brush) =>
+        brush is SolidColorBrush { Color: var c } && ((0.2126 * c.R) + (0.7152 * c.G) + (0.0722 * c.B)) > 140;
 
     /// <summary>Reloads the tree and waits until the top level is loaded.</summary>
     public Task RefreshAsync() => ReloadAsync(keepState: true);

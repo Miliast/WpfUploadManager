@@ -6,8 +6,14 @@
         xmlns:tree="clr-namespace:ModernFileTree"
         <tree:FileTreeView RootPath="C:\Data" ExtensionFilter=".pdf;.docx" FileActivated="OnFileActivated" />
 
-    Colors are neutral, translucent grays and icon colors, so the tree looks right on light and dark
-    backgrounds. Text uses the control's Foreground (inherited from the window).
+    Appearance:
+        Light (default)  light sidebar: #F2F2F2 background, hairline border, soft gray text
+        Dark             dark sidebar: #121212 background, raised selection with top highlight and shadow
+        Auto             transparent background, light/dark colors follow the inherited Foreground
+                         (for embedding into panels of themed apps)
+    All colors are defined below ("FileTree.Light.*" / "FileTree.Dark.*") and can be changed there.
+
+    Font: "Inter" (free, https://rsms.me/inter) if installed, otherwise Segoe UI.
 
     License: MIT-0 – use, change and redistribute freely, no attribution required.
 -->
@@ -17,16 +23,63 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="clr-namespace:ModernFileTree"
     x:Name="Root"
+    Background="{DynamicResource FileTree.Background}"
+    BorderBrush="{DynamicResource FileTree.Border}"
+    BorderThickness="0,0,1,0"
+    FontFamily="Inter, Segoe UI"
     FontSize="14">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="FileTree.BoolToVisibility" />
 
-        <!--  Surfaces  -->
-        <SolidColorBrush x:Key="FileTree.HoverBrush" Color="#14808080" />
-        <SolidColorBrush x:Key="FileTree.SelectedBrush" Color="#24808080" />
-        <SolidColorBrush x:Key="FileTree.SelectedBorderBrush" Color="#3D808080" />
-        <SolidColorBrush x:Key="FileTree.GuideBrush" Color="#33808080" />
+        <!--
+            Color palettes. The active palette is copied to the "FileTree.*" keys by the code-behind
+            (see Appearance), so every element below uses DynamicResource "FileTree.<Name>".
+        -->
+
+        <!--  Light: measured from a light sidebar design (flat colors, no effects except the selection)  -->
+        <SolidColorBrush x:Key="FileTree.Light.Background" Color="#F2F2F2" />
+        <SolidColorBrush x:Key="FileTree.Light.Border" Color="#E5E5E5" />
+        <SolidColorBrush x:Key="FileTree.Light.Text" Color="#636363" />
+        <SolidColorBrush x:Key="FileTree.Light.TextSelected" Color="#1F1F1F" />
+        <SolidColorBrush x:Key="FileTree.Light.Detail" Color="#A3A3A3" />
+        <SolidColorBrush x:Key="FileTree.Light.Chevron" Color="#ABABAB" />
+        <SolidColorBrush x:Key="FileTree.Light.Guide" Color="#E6E4E3" />
+        <SolidColorBrush x:Key="FileTree.Light.Hover" Color="#0A000000" />
+        <SolidColorBrush x:Key="FileTree.Light.Selected" Color="#FFFFFF" />
+        <LinearGradientBrush x:Key="FileTree.Light.SelectedBorder" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Offset="0" Color="#12000000" />
+            <GradientStop Offset="1" Color="#1F000000" />
+        </LinearGradientBrush>
+        <DropShadowEffect
+            x:Key="FileTree.Light.SelectedShadow"
+            BlurRadius="8"
+            Direction="270"
+            Opacity="0.06"
+            ShadowDepth="1"
+            Color="Black" />
+
+        <!--  Dark: measured from a dark sidebar design (raised chip with lighter top edge and shadow)  -->
+        <SolidColorBrush x:Key="FileTree.Dark.Background" Color="#121212" />
+        <SolidColorBrush x:Key="FileTree.Dark.Border" Color="#1F1F1F" />
+        <SolidColorBrush x:Key="FileTree.Dark.Text" Color="#A4A4A4" />
+        <SolidColorBrush x:Key="FileTree.Dark.TextSelected" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="FileTree.Dark.Detail" Color="#6C6B70" />
+        <SolidColorBrush x:Key="FileTree.Dark.Chevron" Color="#8A8B8D" />
+        <SolidColorBrush x:Key="FileTree.Dark.Guide" Color="#14FFFFFF" />
+        <SolidColorBrush x:Key="FileTree.Dark.Hover" Color="#0DFFFFFF" />
+        <SolidColorBrush x:Key="FileTree.Dark.Selected" Color="#19FFFFFF" />
+        <LinearGradientBrush x:Key="FileTree.Dark.SelectedBorder" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Offset="0" Color="#38FFFFFF" />
+            <GradientStop Offset="1" Color="#12FFFFFF" />
+        </LinearGradientBrush>
+        <DropShadowEffect
+            x:Key="FileTree.Dark.SelectedShadow"
+            BlurRadius="6"
+            Direction="270"
+            Opacity="0.55"
+            ShadowDepth="1"
+            Color="Black" />
 
         <!--  Icons (vector, no icon font needed)  -->
         <Geometry x:Key="FileTree.FolderGeometry">M1.5,1 H6.2 C6.7,1 7.1,1.2 7.4,1.6 L8.5,3 H16.5 C17.3,3 18,3.7 18,4.5 V12.5 C18,13.3 17.3,14 16.5,14 H1.5 C0.7,14 0,13.3 0,12.5 V2.5 C0,1.7 0.7,1 1.5,1 Z</Geometry>
@@ -48,9 +101,8 @@
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Data="M 0,0 L 4,4 L 0,8"
-                                Opacity="0.55"
                                 RenderTransformOrigin="0.5,0.5"
-                                Stroke="{TemplateBinding Foreground}"
+                                Stroke="{DynamicResource FileTree.Chevron}"
                                 StrokeEndLineCap="Round"
                                 StrokeLineJoin="Round"
                                 StrokeStartLineCap="Round"
@@ -94,7 +146,7 @@
                                 </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Chevron" Property="Opacity" Value="1" />
+                                <Setter TargetName="Chevron" Property="Stroke" Value="{DynamicResource FileTree.Text}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -165,20 +217,21 @@
                         <StackPanel>
                             <Grid
                                 x:Name="Row"
-                                MinHeight="30"
+                                MinHeight="32"
                                 Margin="0,1"
                                 Background="Transparent">
                                 <Border
                                     x:Name="HoverLayer"
-                                    Background="{StaticResource FileTree.HoverBrush}"
+                                    Background="{DynamicResource FileTree.Hover}"
                                     CornerRadius="8"
                                     Opacity="0" />
                                 <Border
                                     x:Name="SelectionLayer"
-                                    Background="{StaticResource FileTree.SelectedBrush}"
-                                    BorderBrush="{StaticResource FileTree.SelectedBorderBrush}"
+                                    Background="{DynamicResource FileTree.Selected}"
+                                    BorderBrush="{DynamicResource FileTree.SelectedBorder}"
                                     BorderThickness="1"
                                     CornerRadius="8"
+                                    Effect="{DynamicResource FileTree.SelectedShadow}"
                                     Opacity="0" />
 
                                 <Grid Margin="{Binding Indent}">
@@ -205,7 +258,7 @@
                                     Width="1"
                                     Margin="{Binding GuideIndent}"
                                     HorizontalAlignment="Left"
-                                    Fill="{StaticResource FileTree.GuideBrush}"
+                                    Fill="{DynamicResource FileTree.Guide}"
                                     SnapsToDevicePixels="True" />
                                 <ItemsPresenter x:Name="ItemsHost" />
                             </Grid>
@@ -326,13 +379,13 @@
                             TextTrimming="CharacterEllipsis">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Opacity" Value="0.82" />
+                                    <Setter Property="Foreground" Value="{DynamicResource FileTree.Text}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                            <Setter Property="Opacity" Value="1" />
+                                            <Setter Property="Foreground" Value="{DynamicResource FileTree.TextSelected}" />
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsPlaceholder}" Value="True">
-                                            <Setter Property="Opacity" Value="0.5" />
+                                            <Setter Property="Foreground" Value="{DynamicResource FileTree.Detail}" />
                                             <Setter Property="FontStyle" Value="Italic" />
                                         </DataTrigger>
                                     </Style.Triggers>
@@ -355,7 +408,7 @@
                             <TextBlock
                                 VerticalAlignment="Center"
                                 FontSize="12"
-                                Opacity="0.5"
+                                Foreground="{DynamicResource FileTree.Detail}"
                                 Text="{Binding DetailText}" />
                         </StackPanel>
                     </Grid>
@@ -368,7 +421,7 @@
             Margin="24"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
-            Opacity="0.6"
+            Foreground="{DynamicResource FileTree.Detail}"
             Text="{Binding Message, ElementName=Root}"
             TextAlignment="Center"
             TextWrapping="Wrap">

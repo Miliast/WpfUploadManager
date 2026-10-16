@@ -147,10 +147,15 @@ Beide Dateien in ein beliebiges WPF-Projekt (.NET 8+) kopieren – fertig. Kein 
 | `FileFilter` | Optionales `Func<string, bool>` für eigene Filter |
 | `SelectedPath` / `SelectedItem` | Auswahl (`SelectedPath` ist two-way bindbar) |
 | `FileActivated` / `FileActivatedCommand` | Doppelklick oder Enter auf eine Datei |
+| `Appearance` | `Light` (Standard: helle Sidebar `#F2F2F2`), `Dark` (dunkle Sidebar `#121212`) oder `Auto` (transparent, hell/dunkel passend zur `Foreground` – zum Einbetten in Apps mit eigenem Theme) |
 | `EmptyText`, `LoadingText` | Texte für leere Ordner und Ladezeilen |
 | `Refresh()` | Neu laden – aufgeklappte Ordner und Auswahl bleiben erhalten |
 
-Funktionen: Lazy Loading, Anzahl der Einträge je Ordner, Dateigrößen, farbige Ordner/Dateitypen, Einrückungslinien, animierter Chevron, Hover-/Auswahl-Animation, Drag & Drop von Dateien (Standard-`FileDrop`-Format), Virtualisierung für große Ordner. Die Farben sind neutral transparent und funktionieren auf hellem und dunklem Hintergrund; die Schrift nutzt die `Foreground` des Fensters.
+Funktionen: Lazy Loading, Anzahl der Einträge je Ordner, Dateigrößen, farbige Ordner/Dateitypen, Einrückungslinien, animierter Chevron, Hover-/Auswahl-Animation, Drag & Drop von Dateien (Standard-`FileDrop`-Format), Virtualisierung für große Ordner.
+
+**Farben:** Beide Paletten (`FileTree.Light.*` / `FileTree.Dark.*`) stehen oben in `FileTreeView.xaml` und sind aus Design-Vorlagen gemessen – flache Farben, gedämpftes Grau für Text (`#636363`), feine Trennlinie. Einziger Effekt ist der „Chip“ der Auswahl: hellere Oberkante plus weicher Schatten.
+
+**Schrift:** Das Control nutzt [Inter](https://rsms.me/inter/) (kostenlos, SIL Open Font License), wenn sie installiert ist – sonst automatisch Segoe UI. Für den exakten Look Inter einmal installieren (die statischen TTF-Dateien). Andere Schrift: einfach `FontFamily="…"` am Control setzen.
 
 ## Entwicklung
 

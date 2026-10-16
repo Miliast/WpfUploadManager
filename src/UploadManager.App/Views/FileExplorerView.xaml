@@ -113,6 +113,7 @@
             <tree:FileTreeView
                 x:Name="FileTree"
                 Grid.Row="3"
+                Appearance="Auto"
                 AutomationProperties.Name="Dateibaum"
                 EmptyText="Keine passenden Dateien in diesem Ordner. Schalte den Filter aus oder wähle einen anderen Ordner."
                 FileActivatedCommand="{Binding ActivateFileCommand}"
