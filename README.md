@@ -118,11 +118,26 @@ Wichtige Entscheidungen:
 
 ## Dateibaum in eigenen Projekten nutzen – nur 2 Dateien
 
-Der Dateibaum (links) ist ein eigenständiges Control ohne Abhängigkeiten. Als Design-Vorlage diente dieser Entwurf:
+Der Dateibaum (links) ist ein eigenständiges Control ohne Abhängigkeiten. Als Design-Vorlagen dienten diese Entwürfe – aus ihnen sind die beiden Farbpaletten `Dark` und `Light` gemessen:
 
-<p align="center">
-  <img src="docs/images/file-tree-design-reference.png" alt="Design-Vorlage für den Dateibaum: dunkler Baum mit farbigen Ordnern, Chevrons, Einrückungslinien und Anzahl der Einträge" width="320">
-</p>
+<table>
+  <tr>
+    <th>Dark – <code>Appearance="Dark"</code></th>
+    <th>Light – <code>Appearance="Light"</code> (Standard)</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="docs/images/design-reference-dark.png" alt="Dunkle Design-Vorlage: Baum mit farbigen Ordnern, Chevrons, Einrückungslinien und Anzahl der Einträge" width="280">
+    </td>
+    <td align="center" valign="top">
+      <img src="docs/images/design-reference-light.png" alt="Helle Design-Vorlage: graue Sidebar mit gedämpftem Text neben weißem Inhaltsbereich" width="460">
+      <br><br>
+      <img src="docs/images/design-reference-light-colors.png" alt="Nahaufnahme der Farben: Sidebar #F2F2F2, Trennlinie #E5E5E5, Inhalt #FFFFFF" width="460">
+      <br>
+      <sub>Sidebar <code>#F2F2F2</code> · Trennlinie <code>#E5E5E5</code> · Inhalt <code>#FFFFFF</code></sub>
+    </td>
+  </tr>
+</table>
 
 
 - [`src/UploadManager.App/Controls/FileTreeView.xaml`](src/UploadManager.App/Controls/FileTreeView.xaml) – das komplette Design
