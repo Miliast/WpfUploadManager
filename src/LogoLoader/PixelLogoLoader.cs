@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -17,9 +16,10 @@ public enum LoaderTheme
 }
 
 /// <summary>
-/// "Loading…" pill whose logo is built from pixel tiles: they fly in on springs along curved paths, a light sweep runs
-/// over the finished logo, then the tiles drift off and the loop starts again. Any <see cref="ImageSource"/> works
-/// (PNG/JPG/ICO via <see cref="FromFile"/>, or a XAML DrawingImage); transparent PNGs look best, a plain background is removed.
+/// "Loading…" pill whose logo is built from pixel tiles. Three phases: the tiles drift in softly once, then the logo
+/// stays whole while a calm wave of light crosses it now and then, and on stop it comes to rest and raises
+/// <see cref="Landed"/>. Any <see cref="ImageSource"/> works (PNG/JPG/ICO via <see cref="FromFile"/>, or a XAML
+/// DrawingImage); transparent PNGs look best, a plain background is removed.
 /// <para>
 /// Usage: <c>new PixelLogoLoader { Source = PixelLogoLoader.FromFile("logo.png"), Text = "Uploading" }</c>, or in XAML
 /// <c>&lt;ll:PixelLogoLoader Source="Assets/logo.png" IsActive="{Binding IsBusy}" /&gt;</c>.
@@ -29,20 +29,23 @@ public enum LoaderTheme
 /// </summary>
 public sealed class PixelLogoLoader : Border
 {
-    // ── Timeline of one loop (seconds) ─────────────────────────────────────
-    private const double AssembleSpread = 0.8;   // first → last tile launching
-    private const double ShimmerStart = 1.5;     // light sweep over the finished logo
-    private const double ShimmerTime = 0.85;
-    private const double StopFrom = 2.35;        // a requested stop lands here: assembled, sweep done, nothing moving
-    private const double ExitStart = 2.7;
-    private const double ExitSpread = 0.55;
-    private const double ExitTime = 0.62;
-    private const double Cycle = 4.2;            // leaves a short empty beat before the next loop
-    private const double GhostLag = 0.022;       // motion-blur copies trail this far behind (×1, ×2)
+    // ── Timeline (seconds since the loader started) ────────────────────────
+    // 1. Build-up, once: the tiles drift in softly, bottom-left first.
+    // 2. Calm: the logo stays whole; now and then one soft wave of light runs over it.
+    // 3. Landing: when IsActive goes off, the build-up/wave finishes, everything rests, Landed is raised.
+    private const double AssembleSpread = 0.7;   // first → last tile setting off
+    private const double Jitter = 0.08;          // random extra delay per tile, so the sweep isn't a ruler-straight line
+    private const double FadeIn = 0.45;          // a tile appears this slowly – it is seen travelling instead of popping up
+    private const double Settle = 0.9;           // after this long a tile rests exactly on its pixels
+    private const double IntroEnd = AssembleSpread + Jitter + Settle;
+    private const double WaveFirst = IntroEnd + 0.35;
+    private const double WaveEvery = 2.8;        // one wave, then stillness
+    private const double WaveTime = 1.2;
+    private const double WaveWidth = 0.16;       // width of the band of light (share of the logo diagonal)
 
-    // ── Springs: frequency (Hz) and damping ratio (< 1 overshoots) ─────────
-    private const double MoveFrequency = 1.7, MoveDamping = 0.62;   // ~8 % overshoot, settles in ~0.6 s
-    private const double PopFrequency = 2.2, PopDamping = 0.45;     // size: a livelier ~20 % pop
+    // ── Soft arrival: a spring that barely overshoots (damping 0.9 ≈ 0.2 %) ─
+    private const double MoveFrequency = 1.3, MoveDamping = 0.9;
+    private const double StartScale = 0.82;      // tiles start almost full size – no burst from a point
 
     // ── Look ───────────────────────────────────────────────────────────────
     private const double TileFill = 0.8;         // tile edge / grid pitch (the rest is the gap)
@@ -77,7 +80,13 @@ public sealed class PixelLogoLoader : Border
         nameof(Text), typeof(string), typeof(PixelLogoLoader), new PropertyMetadata("Loading", (d, _) => ((PixelLogoLoader)d).ApplyLayout()));
 
     public static readonly DependencyProperty IsActiveProperty = DependencyProperty.Register(
-        nameof(IsActive), typeof(bool), typeof(PixelLogoLoader), new PropertyMetadata(true, (d, _) => ((PixelLogoLoader)d).UpdateClock()));
+        nameof(IsActive), typeof(bool), typeof(PixelLogoLoader), new PropertyMetadata(true, (d, _) => ((PixelLogoLoader)d).OnActiveChanged()));
+
+    /// <summary>
+    /// Raised after <see cref="IsActive"/> went off and the logo has come to rest (at once if nothing was moving).
+    /// Hide the loader in response to this, not to your own busy flag – then it never disappears half built.
+    /// </summary>
+    public event EventHandler? Landed;
 
     /// <summary>The logo. Transparent PNGs work best; a uniform background colour is removed (see <see cref="RemoveBackground"/>).</summary>
     public ImageSource? Source { get => (ImageSource?)GetValue(SourceProperty); set => SetValue(SourceProperty, value); }
@@ -122,28 +131,30 @@ public sealed class PixelLogoLoader : Border
 
     private sealed class Tile
     {
-        public required Point Home;          // centre in layer coordinates
-        public required double Size;         // edge length when resting
+        public required Rect Rest;           // where it rests, on whole device pixels (crisp edges)
         public required Brush Brush;
-        public required double Diagonal;     // 0 = bottom-left corner of the logo, 1 = top-right
-        public double In, Out;               // launch times within the loop
-        public Vector From, Arc, To, Curl;   // flight paths, new every loop
-        public double SpinIn, SpinOut;       // degrees
+        public required double Diagonal;     // 0 = bottom-left corner of the logo, 1 = top-right (build-up order)
+        public required double Sweep;        // 0 = top-left, 1 = bottom-right (path of the wave)
+        public double In;                    // when it sets off
+        public Vector From;                  // where it drifts in from, new on every start
+        public double Spin;                  // degrees, small
     }
 
+    private static readonly Pose Resting = new(default, 1, 0, 1, 0);
+
+    private readonly DrawingGroup _drawing = new();   // the tiles; refilled per frame without a layout pass
     private readonly TileLayer _layer;
-    private readonly TextBlock _text = new() { FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock _text = new() { FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
     private readonly Run _label = new("Loading");
     private readonly Run[] _dots = [new("."), new("."), new(".")];
     private readonly SolidColorBrush[] _dotBrushes = [new(), new(), new()];
     private readonly Brush _glow = Frozen(Colors.White);
     private readonly Random _random = new();
-    private readonly Stopwatch _clock = new();
     private List<Tile> _tiles = [];
-    private Pose[] _poses = [];
-    private bool _prefersDark = true, _running, _stopRequested;
+    private bool _prefersDark = true, _running, _stopRequested, _still;
     private Color _textColor = Colors.White;
-    private double _t, _lastT = double.MaxValue;
+    private double _t, _dpi = 1;
+    private TimeSpan? _startedAt;
     private TimeSpan _lastFrame;
 
     public PixelLogoLoader()
@@ -160,15 +171,20 @@ public sealed class PixelLogoLoader : Border
         row.Children.Add(_text);
         Child = row;
         SnapsToDevicePixels = true;
+        UseLayoutRounding = true; // the tile layer starts on a whole pixel, so the resting tiles stay sharp
 
-        // Fully rounded ends; the clip makes incoming tiles appear from inside the pill.
+        // Fully rounded ends; the clip keeps drifting tiles inside the pill.
         SizeChanged += (_, _) =>
         {
             double radius = ActualHeight / 2;
             CornerRadius = new CornerRadius(radius);
             Clip = new RectangleGeometry(new Rect(RenderSize), radius, radius);
         };
-        Loaded += (_, _) => UpdateClock();
+        Loaded += (_, _) =>
+        {
+            if (VisualTreeHelper.GetDpi(this).DpiScaleX != _dpi) Rebuild(); // now the real monitor scaling is known
+            UpdateClock();
+        };
         Unloaded += (_, _) => UpdateClock();
         IsVisibleChanged += (_, _) => UpdateClock();
 
@@ -193,7 +209,11 @@ public sealed class PixelLogoLoader : Border
         var (cells, cols, rows) = Source is { } source ? Sample(source, Resolution, RemoveBackground) : ([], 0, 0);
         if (cells.Count == 0) (cells, cols, rows) = PumpkinCells();
 
-        double pitch = LogoSize / Math.Max(cols, rows);
+        // Everything in whole device pixels: grid pitch, tile edge and tile position. Otherwise the resting logo looks soft.
+        double dpi = _dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        double pitchPx = Math.Max(2, Math.Round(LogoSize / Math.Max(cols, rows) * dpi));
+        double fullPx = Math.Max(1, Math.Min(Math.Round(pitchPx * TileFill), pitchPx - 1)); // always at least 1 px gap
+        double pitch = pitchPx / dpi;
         double width = cols * pitch, height = rows * pitch;
         _layer.Width = width;
         _layer.Height = height;
@@ -202,28 +222,37 @@ public sealed class PixelLogoLoader : Border
         double darkScore = 0, lightScore = 0;
         foreach (var cell in cells)
         {
-            var home = new Point((cell.Col + 0.5) * pitch, (cell.Row + 0.5) * pitch);
+            // Partly covered edge cells get smaller tiles: the pixel version of anti-aliasing.
+            double sizePx = Math.Max(1, Math.Round(fullPx * Math.Clamp(Math.Sqrt(cell.Coverage / 0.8), 0.45, 1)));
+            double insetPx = Math.Round((pitchPx - sizePx) / 2);
+            var rest = new Rect(((cell.Col * pitchPx) + insetPx) / dpi, ((cell.Row * pitchPx) + insetPx) / dpi, sizePx / dpi, sizePx / dpi);
+            double x = (rest.X + (rest.Width / 2)) / width, y = (rest.Y + (rest.Height / 2)) / height;
             tiles.Add(new Tile
             {
-                Home = home,
-                // Partly covered edge cells get smaller tiles: the pixel version of anti-aliasing.
-                Size = pitch * TileFill * Math.Clamp(Math.Sqrt(cell.Coverage / 0.8), 0.45, 1),
+                Rest = rest,
                 Brush = Frozen(cell.Color),
-                Diagonal = ((home.X / width) + (1 - (home.Y / height))) / 2,
+                Diagonal = (x + (1 - y)) / 2,
+                Sweep = (x + y) / 2,
             });
             double lum = Luminance(cell.Color), weight = cell.Coverage;
             darkScore += weight * Math.Log(Contrast(lum, Luminance(DarkPill)));
             lightScore += weight * Math.Log(Contrast(lum, Luminance(LightPill)));
         }
         _tiles = tiles;
-        _poses = new Pose[tiles.Count];
         _prefersDark = darkScore >= lightScore;
 
-        Reshuffle();
+        Shuffle();
         ApplyTheme();
         ApplyLayout();
-        _layer.InvalidateVisual();
+        Redraw();
         UpdateClock();
+    }
+
+    /// <summary>Moving the window to a monitor with another scaling: put the tiles on that monitor's pixels.</summary>
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        Rebuild();
     }
 
     /// <summary>Renders the image small (×8 per tile), then averages each cell: colour weighted by alpha, coverage = mean alpha.</summary>
@@ -309,25 +338,16 @@ public sealed class PixelLogoLoader : Border
         return (cells, Pumpkin[0].Length, Pumpkin.Length);
     }
 
-    /// <summary>New flight paths every loop, so no two loops look the same. Distances scale with the logo.</summary>
-    private void Reshuffle()
+    /// <summary>New drift paths on every start, so no two build-ups look the same. Distances scale with the logo.</summary>
+    private void Shuffle()
     {
         double k = LogoSize / 88;
         foreach (var tile in _tiles)
         {
-            // In: a sweep from the bottom-left; each tile comes from the lower left on a slight arc.
-            tile.In = (tile.Diagonal * AssembleSpread) + (_random.NextDouble() * 0.08);
-            var from = Direction(110 + (_random.NextDouble() * 90)) * (34 + (_random.NextDouble() * 30)) * k;
-            tile.From = from;
-            tile.Arc = Perpendicular(from) * (_random.NextDouble() < 0.5 ? -1 : 1) * (0.18 + (_random.NextDouble() * 0.22));
-            tile.SpinIn = (_random.NextDouble() < 0.5 ? -1 : 1) * (25 + (_random.NextDouble() * 45));
-
-            // Out: the leading edge (top-right) leaves first, drifting up and to the right like a stream.
-            tile.Out = ExitStart + ((1 - tile.Diagonal) * ExitSpread) + (_random.NextDouble() * 0.06);
-            var to = Direction(-80 + (_random.NextDouble() * 75)) * (30 + (_random.NextDouble() * 40)) * k;
-            tile.To = to;
-            tile.Curl = Perpendicular(to) * (_random.NextDouble() < 0.5 ? -1 : 1) * (0.1 + (_random.NextDouble() * 0.2));
-            tile.SpinOut = (_random.NextDouble() < 0.5 ? -1 : 1) * (40 + (_random.NextDouble() * 60));
+            // A sweep from the bottom-left; each tile drifts a short way in from the lower left and turns only a little.
+            tile.In = (tile.Diagonal * AssembleSpread) + (_random.NextDouble() * Jitter);
+            tile.From = Direction(120 + (_random.NextDouble() * 50)) * (10 + (_random.NextDouble() * 10)) * k;
+            tile.Spin = (_random.NextDouble() < 0.5 ? -1 : 1) * (4 + (_random.NextDouble() * 6));
         }
     }
 
@@ -335,38 +355,39 @@ public sealed class PixelLogoLoader : Border
     // Motion
     // ════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Where a tile is at time <paramref name="t"/> of the loop. Pure function of time, so motion blur can sample the past.</summary>
-    private static Pose Evaluate(Tile tile, double t, Size logo)
+    /// <summary>Where a tile is <paramref name="t"/> seconds after the start. <paramref name="lift"/> = how far the wave raises a tile.</summary>
+    private static Pose Evaluate(Tile tile, double t, double lift)
     {
         double since = t - tile.In;
-        if (since <= 0) return new Pose(tile.From, 0.15, tile.SpinIn, 0, 0);
+        if (since <= 0) return default; // not there yet (opacity 0)
 
-        double leaving = t - tile.Out;
-        if (leaving <= 0)
+        if (since >= Settle)
         {
-            // Arrive: position and rotation on one spring, size on a bouncier one; the arc bulges mid-flight.
-            double s = Spring(since, MoveFrequency, MoveDamping);
-            double pop = Spring(since, PopFrequency, PopDamping);
-            var offset = (tile.From * (1 - s)) + (tile.Arc * tile.From.Length * Math.Sin(Math.PI * Math.Clamp(s, 0, 1)));
-            double glow = Shimmer(tile, t, logo);
-            return new Pose(offset, (0.15 + (0.85 * pop)) * (1 + (0.07 * glow)), tile.SpinIn * (1 - s), SmoothStep(0, 0.16, since), glow);
+            // Calm: exactly on its pixels, unless the wave is passing – then it brightens, rises and grows a touch.
+            double glow = Wave(tile, t);
+            return glow < 0.004 ? Resting : new Pose(new Vector(0, -lift * glow), 1 + (0.06 * glow), 0, 1, glow);
         }
 
-        // Leave: accelerate away (ease-in), curl sideways, shrink and fade at the very end.
-        double e = Math.Min(leaving / ExitTime, 1);
-        double travel = e * e * e;
-        var drift = (tile.To * travel) + (tile.Curl * tile.To.Length * Math.Sin(Math.PI * e) * 0.5);
-        return new Pose(drift, 1 - (0.7 * e * e), tile.SpinOut * travel, 1 - SmoothStep(0.45, 1, e), 0);
+        // Build-up: drift, turn and size on one soft spring; the slow fade-in lets the eye follow the whole way.
+        double s = Spring(since, MoveFrequency, MoveDamping);
+        return new Pose(tile.From * (1 - s), StartScale + ((1 - StartScale) * s), tile.Spin * (1 - s), SmoothStep(0, FadeIn, since), 0);
     }
 
-    /// <summary>A soft diagonal band of light that sweeps over the resting logo once per loop (0…1 brightness).</summary>
-    private static double Shimmer(Tile tile, double t, Size logo)
+    /// <summary>Progress 0…1 of the wave that is running at <paramref name="t"/>, or -1 between waves.</summary>
+    private static double WaveProgress(double t)
     {
-        double p = (t - ShimmerStart) / ShimmerTime;
-        if (p <= 0 || p >= 1) return 0;
-        double band = -0.25 + (1.5 * EaseInOut(p));                               // band centre travels past both corners
-        double here = ((tile.Home.X / logo.Width) + (tile.Home.Y / logo.Height)) / 2; // top-left → bottom-right diagonal
-        double d = (here - band) / 0.13;
+        if (t < WaveFirst) return -1;
+        double p = ((t - WaveFirst) % WaveEvery) / WaveTime;
+        return p < 1 ? p : -1;
+    }
+
+    /// <summary>A soft diagonal band of light that crosses the resting logo (0…1 brightness at this tile).</summary>
+    private static double Wave(Tile tile, double t)
+    {
+        double p = WaveProgress(t);
+        if (p < 0) return 0;
+        double band = -0.35 + (1.7 * EaseInOut(p)); // starts and ends outside the logo, slow in and slow out
+        double d = (tile.Sweep - band) / WaveWidth;
         return Math.Exp(-d * d);
     }
 
@@ -382,12 +403,20 @@ public sealed class PixelLogoLoader : Border
     // Clock
     // ════════════════════════════════════════════════════════════════════════
 
+    private void OnActiveChanged()
+    {
+        UpdateClock();
+        if (!IsActive && !_running) Landed?.Invoke(this, EventArgs.Empty); // nothing was moving – no need to wait
+    }
+
     private void UpdateClock()
     {
         bool canRun = IsLoaded && IsVisible && SystemParameters.ClientAreaAnimation && _tiles.Count > 0;
         if (!canRun || (!IsActive && !_running))
         {
+            bool waiting = _stopRequested; // someone is waiting for the landing, but the loader got hidden first
             Stop();
+            if (waiting) Landed?.Invoke(this, EventArgs.Empty);
             return;
         }
         if (IsActive)
@@ -404,105 +433,103 @@ public sealed class PixelLogoLoader : Border
     private void Start()
     {
         _running = true;
-        _clock.Restart();
-        _lastT = double.MaxValue;
+        _startedAt = null; // set by the first frame
+        _t = 0;
+        _still = false;
+        Shuffle();
         CompositionTarget.Rendering += OnRendering;
+        Redraw(); // empty until the first tiles set off – never a flash of the finished logo
     }
 
     private void Stop()
     {
         if (_running) CompositionTarget.Rendering -= OnRendering;
         _running = _stopRequested = false;
-        _clock.Stop();
         for (int i = 0; i < _dotBrushes.Length; i++) _dotBrushes[i].Color = _textColor;
-        _layer.InvalidateVisual();
+        Redraw();
     }
 
     private void OnRendering(object? sender, EventArgs e)
     {
-        // Rendering can fire more than once per frame; only work once per new frame.
-        if (e is RenderingEventArgs args)
-        {
-            if (args.RenderingTime == _lastFrame) return;
-            _lastFrame = args.RenderingTime;
-        }
+        // The frame's own timestamp is the clock: it advances by exactly one screen refresh per frame, however late
+        // this handler happens to run. (A stopwatch read here would jitter.) Rendering can also fire twice per frame.
+        var frame = ((RenderingEventArgs)e).RenderingTime;
+        if (frame == _lastFrame) return;
+        _lastFrame = frame;
+        _startedAt ??= frame;
+        _t = (frame - _startedAt.Value).TotalSeconds;
 
-        double now = _clock.Elapsed.TotalSeconds;
-        _t = now % Cycle;
-        if (_t < _lastT) Reshuffle(); // a new loop just started – every tile is still hidden
-        _lastT = _t;
-
-        if (_stopRequested && _t is >= StopFrom and < ExitStart)
+        bool moving = _t < IntroEnd || WaveProgress(_t) >= 0;
+        if (_stopRequested && !moving)
         {
-            Stop();
+            Stop(); // landed: whole logo, nothing in motion
+            Landed?.Invoke(this, EventArgs.Empty);
             return;
         }
 
         // Dots: a soft wave instead of on/off blinking.
         for (int i = 0; i < _dotBrushes.Length; i++)
         {
-            double v = 0.5 + (0.5 * Math.Sin((now * 2 * Math.PI / 1.25) - (i * 0.9)));
+            double v = 0.5 + (0.5 * Math.Sin((_t * 2 * Math.PI / 1.25) - (i * 0.9)));
             _dotBrushes[i].Color = Color.FromArgb(ToByte(255 * (0.25 + (0.75 * v * v))), _textColor.R, _textColor.G, _textColor.B);
         }
-        _layer.InvalidateVisual();
+
+        // Between waves nothing changes: draw the resting logo once, then leave it alone.
+        if (moving || !_still) Redraw();
+        _still = !moving;
     }
 
     // ════════════════════════════════════════════════════════════════════════
     // Drawing
     // ════════════════════════════════════════════════════════════════════════
 
-    /// <summary>All tiles in one element: motion-blur copies first, then the tiles on top.</summary>
-    private void Render(DrawingContext dc)
+    /// <summary>
+    /// Refills the drawing the layer shows. The layer itself is never invalidated, so a frame costs no layout pass –
+    /// WPF just sends the new drawing to the render thread.
+    /// </summary>
+    private void Redraw()
     {
-        if (!_running)
-        {
-            foreach (var tile in _tiles) DrawTile(dc, tile, new Pose(default, 1, 0, 1, 0), 1);
-            return;
-        }
-
-        var logo = new Size(_layer.Width, _layer.Height);
-        for (int i = 0; i < _tiles.Count; i++)
-        {
-            var tile = _tiles[i];
-            var pose = _poses[i] = Evaluate(tile, _t, logo);
-            if (pose.Opacity <= 0) continue;
-            for (int k = 2; k >= 1; k--)
-            {
-                var past = Evaluate(tile, _t - (k * GhostLag), logo);
-                double speed = (pose.Offset - past.Offset).Length / k; // px per lag step
-                double strength = Math.Clamp((speed - 1.5) / 6, 0, 1);
-                if (strength > 0) DrawTile(dc, tile, past with { Scale = past.Scale * 0.92, Glow = 0 }, past.Opacity * strength * (k == 1 ? 0.3 : 0.15));
-            }
-        }
-        for (int i = 0; i < _tiles.Count; i++) DrawTile(dc, _tiles[i], _poses[i], _poses[i].Opacity);
+        double lift = 1.5 * LogoSize / 88;
+        using var dc = _drawing.Open();
+        foreach (var tile in _tiles) DrawTile(dc, tile, _running ? Evaluate(tile, _t, lift) : Resting);
     }
 
-    private void DrawTile(DrawingContext dc, Tile tile, Pose pose, double opacity)
+    private void DrawTile(DrawingContext dc, Tile tile, Pose pose)
     {
-        if (opacity < 0.004 || pose.Scale < 0.02) return;
-        double size = tile.Size * pose.Scale, radius = size * CornerRatio;
-        var rect = new Rect(-size / 2, -size / 2, size, size);
-        var matrix = Matrix.Identity;
-        matrix.Rotate(pose.Angle);
-        matrix.Translate(tile.Home.X + pose.Offset.X, tile.Home.Y + pose.Offset.Y);
+        if (pose.Opacity < 0.004) return;
+        var rect = tile.Rest;
+        bool turned = false;
+        if (pose != Resting)
+        {
+            double size = rect.Width * pose.Scale;
+            var centre = new Point(rect.X + (rect.Width / 2) + pose.Offset.X, rect.Y + (rect.Height / 2) + pose.Offset.Y);
+            rect = new Rect(centre.X - (size / 2), centre.Y - (size / 2), size, size);
+            if (pose.Angle != 0)
+            {
+                dc.PushTransform(new RotateTransform(pose.Angle, centre.X, centre.Y));
+                turned = true;
+            }
+        }
+        bool faded = pose.Opacity < 1;
+        if (faded) dc.PushOpacity(pose.Opacity);
 
-        dc.PushTransform(new MatrixTransform(matrix));
-        dc.PushOpacity(Math.Min(opacity, 1));
+        double radius = rect.Width * CornerRatio;
         dc.DrawRoundedRectangle(tile.Brush, null, rect, radius, radius);
         if (pose.Glow > 0.01)
         {
-            dc.PushOpacity(pose.Glow * 0.55);
+            dc.PushOpacity(pose.Glow * 0.45);
             dc.DrawRoundedRectangle(_glow, null, rect, radius, radius);
             dc.Pop();
         }
-        dc.Pop();
-        dc.Pop();
+
+        if (faded) dc.Pop();
+        if (turned) dc.Pop();
     }
 
-    /// <summary>Hosts the tiles; sized to the logo, but tiles may fly outside it (the pill clips them).</summary>
+    /// <summary>Shows the tile drawing; sized to the logo, but tiles may drift outside it (the pill clips them).</summary>
     private sealed class TileLayer(PixelLogoLoader owner) : FrameworkElement
     {
-        protected override void OnRender(DrawingContext drawingContext) => owner.Render(drawingContext);
+        protected override void OnRender(DrawingContext drawingContext) => drawingContext.DrawDrawing(owner._drawing);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -526,11 +553,10 @@ public sealed class PixelLogoLoader : Border
         bool hasText = !string.IsNullOrEmpty(Text);
         _label.Text = Text ?? "";
         _text.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
-        _text.FontSize = s * 0.52;
-        _text.FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI");
-        _text.Margin = new Thickness(0, 0, 0, s * 0.05);
-        _layer.Margin = new Thickness(0, 0, hasText ? s * 0.38 : 0, 0);
-        Padding = hasText ? new Thickness(s * 0.42, s * 0.26, s * 0.6, s * 0.26) : new Thickness(s * 0.4);
+        _text.FontSize = s * 0.4; // the font family is inherited from the app, so the loader speaks its typeface
+        _text.Margin = new Thickness(0, 0, 0, s * 0.04);
+        _layer.Margin = new Thickness(0, 0, hasText ? s * 0.32 : 0, 0);
+        Padding = hasText ? new Thickness(s * 0.38, s * 0.26, s * 0.52, s * 0.26) : new Thickness(s * 0.4);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -538,13 +564,6 @@ public sealed class PixelLogoLoader : Border
     // ════════════════════════════════════════════════════════════════════════
 
     private static Vector Direction(double degrees) => new(Math.Cos(degrees * Math.PI / 180), Math.Sin(degrees * Math.PI / 180));
-
-    private static Vector Perpendicular(Vector v)
-    {
-        var p = new Vector(-v.Y, v.X);
-        if (p.Length > 0) p.Normalize();
-        return p;
-    }
 
     private static double SmoothStep(double from, double to, double x)
     {

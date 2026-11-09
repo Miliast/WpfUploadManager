@@ -1,11 +1,15 @@
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shell;
+
+using LogoLoader;
 
 using Microsoft.Win32;
 
@@ -26,7 +30,33 @@ public partial class MainWindow : Window
         DataContext = _ws;
         _ws.ProgressChanged += (_, _) => UpdateTaskbar();
         _ws.RunFinished += (_, _) => { if (!IsActive) Flash(); };
+        _ws.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(Workspace.IsBusy) && _ws.IsBusy) ShowBusy(); };
+        Loader.Landed += (_, _) => HideBusy();
+        ApplyOwnLogo();
         UpdateTaskbar();
+    }
+
+    /// <summary>
+    /// Assets\logo.png (next to the exe) replaces the Conduit mark everywhere it appears: loader, top bar, taskbar.
+    /// A missing or unreadable file simply keeps the built-in mark.
+    /// </summary>
+    private void ApplyOwnLogo()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "Assets", "logo.png");
+        if (!File.Exists(path)) return;
+        try
+        {
+            var logo = PixelLogoLoader.FromFile(path);
+            Loader.Source = logo;
+            BrandImage.Source = logo;
+            BrandImage.Visibility = Visibility.Visible;
+            BrandMark.Visibility = Visibility.Collapsed;
+            Icon = logo;
+        }
+        catch (Exception ex) when (ex is IOException or NotSupportedException or UnauthorizedAccessException or FormatException)
+        {
+            // Not a usable image – keep the built-in logo.
+        }
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -39,8 +69,34 @@ public partial class MainWindow : Window
         _ = DwmSetWindowAttribute(hwnd, 34, ref border, sizeof(int));
     }
 
+    // ── Busy overlay: fades in softly, and out only after the loader's logo has landed ──
+
+    private void ShowBusy()
+    {
+        BusyOverlay.Visibility = Visibility.Visible; // the loader starts as soon as it is visible
+        BusyOverlay.BeginAnimation(OpacityProperty, Fade(1, 0.45));
+    }
+
+    private void HideBusy()
+    {
+        if (BusyOverlay.Visibility != Visibility.Visible) return;
+        var fade = Fade(0, 0.4);
+        fade.Completed += (_, _) => { if (!_ws.IsBusy) BusyOverlay.Visibility = Visibility.Collapsed; };
+        BusyOverlay.BeginAnimation(OpacityProperty, fade);
+    }
+
+    private static DoubleAnimation Fade(double to, double seconds) =>
+        new(to, TimeSpan.FromSeconds(seconds)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
+
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (BusyOverlay.IsVisible)
+        {
+            // The overlay stops the mouse; this stops the keyboard (Tab + Enter would still reach the page underneath).
+            // Alt+F4 and other system keys arrive as SystemKey and stay untouched.
+            if (e.Key != Key.System) e.Handled = true;
+            return;
+        }
         if (Keyboard.Modifiers != ModifierKeys.Control) return;
         if (e.Key == Key.O && _ws.IsSetup) Setup.PickProjectFolder();
         else if (e.Key == Key.Enter && _ws.IsSetup) _ws.StartRun();

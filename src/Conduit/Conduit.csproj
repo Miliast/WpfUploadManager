@@ -9,6 +9,7 @@
       Workspace       – state + logic of all screens (the views bind to it)
       PipelineNode    – one pipeline node, its tests and a fake runner that advances them
       GlowSweep       – aurora glow overlay for auto-fill (look in GlowSweep.xaml, motion in GlowSweep.xaml.cs)
+      PixelLogoLoader – linked from src/LogoLoader: the logo-tile loader shown while fetching or exporting
     Moving to .NET 10 later = change TargetFramework to net10.0-windows, nothing else.
   -->
   <PropertyGroup>
@@ -20,5 +21,12 @@
     <!-- Lets the project compile on macOS/Linux; it still only runs on Windows. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The pixel logo loader is shared with src/LogoLoader as a linked file (one source, no extra project). -->
+    <Compile Include="..\LogoLoader\PixelLogoLoader.cs" Link="PixelLogoLoader.cs" />
+    <!-- Optional own logo: put Assets\logo.png next to the project – it replaces the Conduit mark in the loader, top bar and taskbar. -->
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
 </Project>

@@ -10,6 +10,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Conduit"
+        xmlns:ll="clr-namespace:LogoLoader"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=local:Workspace}"
         Title="Conduit"
@@ -105,9 +106,13 @@
                             </Style>
                         </Button.Style>
                         <StackPanel Orientation="Horizontal">
-                            <Border Width="22" Height="22" CornerRadius="6" Background="{StaticResource Ink}">
-                                <Ellipse Width="8" Height="8" Fill="{StaticResource Blue}" />
-                            </Border>
+                            <Grid Width="22" Height="22">
+                                <Border x:Name="BrandMark" CornerRadius="6" Background="{StaticResource Ink}">
+                                    <Ellipse Width="8" Height="8" Fill="{StaticResource Blue}" />
+                                </Border>
+                                <!-- Own logo (Assets\logo.png), set in code-behind when present. -->
+                                <Image x:Name="BrandImage" Visibility="Collapsed" RenderOptions.BitmapScalingMode="HighQuality" />
+                            </Grid>
                             <TextBlock Text="Conduit" Margin="10,0,0,0" FontSize="15" FontWeight="Bold" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
@@ -195,6 +200,18 @@
         <Grid>
             <local:SetupView x:Name="Setup" Visibility="{Binding IsSetup, Converter={StaticResource VisibleWhen}}" />
             <local:RunView Visibility="{Binding IsRun, Converter={StaticResource VisibleWhen}}" />
+
+            <!-- Busy: the page dims softly and the logo loader builds up in the middle. Faded in and out by MainWindow.xaml.cs:
+                 in when the call to X takes noticeably long, out only once the loader reports that the logo has landed. -->
+            <Grid x:Name="BusyOverlay" Visibility="Collapsed" Opacity="0">
+                <Border Background="{StaticResource Page}" Opacity="0.82" />
+                <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,40">
+                    <Border Style="{StaticResource CardShadow}" CornerRadius="100" />
+                    <ll:PixelLogoLoader x:Name="Loader" LogoSize="48" Resolution="12"
+                                        Source="{StaticResource LogoImage}"
+                                        Text="{Binding BusyText}" IsActive="{Binding IsBusy}" />
+                </Grid>
+            </Grid>
         </Grid>
     </DockPanel>
 </Window>

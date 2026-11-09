@@ -129,6 +129,45 @@ public sealed class Workspace : Observable
     /// <summary>Running or finished – the screens with the run sidebar.</summary>
     public bool IsRun => !IsSetup;
 
+    // ── Busy overlay (logo loader) ─────────────────────────────────────────
+
+    /// <summary>A call that answers faster than this shows no loader at all – the app must never feel slower than it is.</summary>
+    private static readonly TimeSpan ShowLoaderAfter = TimeSpan.FromSeconds(0.4);
+
+    private bool _isBusy;
+    private string _busyText = "";
+
+    /// <summary>A blocking call to X is running – the window shows the logo loader over the page.</summary>
+    public bool IsBusy => _isBusy;
+
+    /// <summary>Label of the loader. Kept after the call ends, so it doesn't change while the overlay fades out.</summary>
+    public string BusyText => _busyText;
+
+    /// <summary>
+    /// Runs <paramref name="work"/>; once it takes noticeably long, <see cref="IsBusy"/> goes on until it ends.
+    /// How long the loader stays after that is the window's business: it waits until the logo has landed.
+    /// </summary>
+    private async Task Busy(string text, Task work)
+    {
+        if (await Task.WhenAny(work, Task.Delay(ShowLoaderAfter)) == work)
+        {
+            await work; // quick – nothing to show (awaited so a failure still surfaces)
+            return;
+        }
+        _isBusy = true;
+        _busyText = text;
+        Raise(nameof(BusyText), nameof(IsBusy));
+        try
+        {
+            await work;
+        }
+        finally
+        {
+            _isBusy = false;
+            Raise(nameof(IsBusy));
+        }
+    }
+
     public string Crumb => IsSetup ? "New run" : $"Run #{_runNo}";
 
     // ════════════════════════════════════════════════════════════════════════
@@ -204,7 +243,7 @@ public sealed class Workspace : Observable
         if (XFetching) return;
         _xState = 1;
         Raise(nameof(XFetching), nameof(XLoaded), nameof(CanFetchX), nameof(XTitle), nameof(XSubtitle), nameof(XButtonText));
-        await Task.Delay(1200); // stand-in for the call to the X interface
+        await Busy("Fetching X data", Task.Delay(1200)); // stand-in for the call to the X interface
         _xState = 2;
         _xLoadedAt = DateTime.Now;
         Raise(nameof(XFetching), nameof(XLoaded), nameof(CanFetchX), nameof(XTitle), nameof(XSubtitle), nameof(XButtonText));
@@ -612,7 +651,7 @@ public sealed class Workspace : Observable
         if (!IsFinished || _exportState == 1) return;
         _exportState = 1;
         Raise(nameof(CanExport), nameof(IsExported), nameof(ExportText));
-        await Task.Delay(1000); // stand-in for the upload to X
+        await Busy("Exporting to X", Task.Delay(1000)); // stand-in for the upload to X
         _exportState = 2;
         Raise(nameof(CanExport), nameof(IsExported), nameof(ExportText), nameof(HeaderRightText));
     }
