@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Conduit UI demo: the Paper design built in plain C# (no XAML, no NuGet packages), 3 classes:
+      ConduitWindow  – screens, state, drag & drop, taskbar progress
+      Ui             – design tokens + small factory methods (text, rows, buttons, icons)
+      PipelineNode   – one pipeline node and a fake runner that advances its tests
+    Moving to .NET 10 later = change TargetFramework to net10.0-windows, nothing else.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Conduit</RootNamespace>
+    <AssemblyName>Conduit</AssemblyName>
+    <!-- Lets the project compile on macOS/Linux; it still only runs on Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+</Project>
