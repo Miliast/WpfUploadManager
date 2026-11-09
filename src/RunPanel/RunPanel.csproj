@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    RunPanel: the two boxes of a test run (node tabs + filters + test list, and the log panel) as ONE control.
+      RunPanel.xaml     – look: own colours, icons, styles and templates (no App.xaml needed)
+      RunPanel.xaml.cs  – the RunPanel control + RunSession/RunNode/RunTest/RunLine (data you fill) + small helpers
+    Copy these two files into any WPF project (.NET 8+); this project only exists to try it out (RUNPANEL_DEMO = fake runner).
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>TestRunUi</RootNamespace>
+    <AssemblyName>RunPanel</AssemblyName>
+    <DefineConstants>$(DefineConstants);RUNPANEL_DEMO</DefineConstants>
+    <!-- Lets the project compile on macOS/Linux; it still only runs on Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+</Project>
