@@ -1,11 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Conduit UI demo: the Paper design built in plain C# (no XAML, no NuGet packages), 4 classes:
-      ConduitWindow  – screens, state, drag & drop, taskbar progress
-      Ui             – design tokens + small factory methods (text, rows, buttons, icons)
-      PipelineNode   – one pipeline node and a fake runner that advances its tests
-      GlowSweep      – aurora glow overlay that plays when the sidebar auto-fills the fields
+    Conduit UI demo: the Paper design as XAML + code-behind (no NuGet packages):
+      App.xaml        – design tokens from Paper: colours, fonts, icons, buttons, scroll bars, menus
+      MainWindow      – top bar, shortcuts, Windows taskbar progress (screen 7)
+      SetupView       – screens 1–2: project sidebar, the five fields, "Get data from X", drag & drop
+      RunView         – screens 3–6: node tabs / summary, filters, test list, log panel
+      Workspace       – state + logic of all screens (the views bind to it)
+      PipelineNode    – one pipeline node, its tests and a fake runner that advances them
+      GlowSweep       – aurora glow overlay for auto-fill (look in GlowSweep.xaml, motion in GlowSweep.xaml.cs)
     Moving to .NET 10 later = change TargetFramework to net10.0-windows, nothing else.
   -->
   <PropertyGroup>
