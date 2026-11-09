@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Pixel logo loading pill: any logo image is cut into tiles that fly in on springs, shimmer and drift off again.
+    Plain C#, no XAML, no NuGet packages, 1 class (PixelLogoLoader) – copy the file into any WPF project.
+    LOADER_DEMO switches on the demo window inside the class (choose or drop a logo, change the resolution),
+    so the same file can live in another project without a second entry point.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>LogoLoader</RootNamespace>
+    <AssemblyName>LogoLoader</AssemblyName>
+    <DefineConstants>$(DefineConstants);LOADER_DEMO</DefineConstants>
+    <!-- Lets the project compile on macOS/Linux; it still only runs on Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+</Project>

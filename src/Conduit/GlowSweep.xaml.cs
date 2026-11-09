@@ -7,8 +7,10 @@ using System.Windows.Shapes;
 namespace Conduit;
 
 /// <summary>
-/// Aurora glow for auto-fill: a soft violet → pink → orange light bursts out of the sidebar button, washes across
-/// the page towards the fields and "lands" on each field as its file drops in.
+/// Aurora glow for auto-fill: a calm violet → pink → orange wave that starts as a wide, faint light around the
+/// sidebar button, flows across the page towards the fields and "lands" softly on each field as its file drops in.
+/// Nothing bursts out of a point: every light is large from its first frame, only its opacity rises slowly, and
+/// the lights fade in one after another from left to right – that staggering is what makes it read as a wave.
 /// The look (colours, brushes, shapes, fixed storyboards) is in GlowSweep.xaml; this file only places the shapes
 /// and animates what depends on the window (start point, field positions, sizes).
 /// Pure overlay: it never takes clicks and removes every shape when its animation ends, so the page underneath
@@ -19,67 +21,86 @@ internal sealed partial class GlowSweep : Canvas
     /// <summary>Four-point sparkle (14×14) for the button that starts the glow.</summary>
     public const string SparkleIcon = "M7,1 Q7.6,6.4 13,7 Q7.6,7.6 7,13 Q6.4,7.6 1,7 Q6.4,6.4 7,1 Z";
 
-    // Where each light blob drifts to (fraction of the overlay), its diameter (fraction of the height) and its brush in the XAML.
+    // ── Tuning ─────────────────────────────────────────────────────────────
+    private const double LightMs = 2200;   // lifetime of one light (fade in, hold, fade out)
+    private const double SpreadMs = 700;   // how much later the light at the far right starts than the first one
+    private const double Drift = 0.2;      // how far a light travels: it starts this fraction of the way back to the button
+    private const double Peak = 0.85;      // strongest opacity of a light
+
+    // Where each light rests (fraction of the overlay), its height (fraction of the overlay height) and its brush
+    // in the XAML. Ordered left → right: violet/indigo near the sidebar, pink in the middle, orange at the far edge.
     private static readonly (double X, double Y, double Size, string Brush)[] Blobs =
     [
-        (0.42, 0.30, 0.85, "BlobViolet"),
-        (0.58, 0.62, 0.95, "BlobPink"),
-        (0.78, 0.40, 0.80, "BlobOrange"),
-        (0.95, 0.75, 0.90, "BlobViolet"),
-        (0.66, 0.12, 0.70, "BlobIndigo"),
-        (0.88, 0.95, 0.75, "BlobPink"),
+        (0.28, 0.52, 0.95, "BlobViolet"),
+        (0.44, 0.22, 0.80, "BlobIndigo"),
+        (0.56, 0.68, 1.00, "BlobPink"),
+        (0.72, 0.34, 0.90, "BlobPink"),
+        (0.86, 0.72, 0.95, "BlobOrange"),
+        (0.98, 0.30, 0.85, "BlobOrange"),
     ];
 
     public GlowSweep() => InitializeComponent();
 
     private bool CanPlay => SystemParameters.ClientAreaAnimation && ActualWidth > 0 && ActualHeight > 0;
 
-    /// <summary>Plays the sweep starting at <paramref name="origin"/> (overlay coordinates, e.g. the button's centre).</summary>
+    /// <summary>Plays the wave starting around <paramref name="origin"/> (overlay coordinates, e.g. the button's centre).</summary>
     public void Play(Point origin)
     {
         if (!CanPlay) return;
         double w = ActualWidth, h = ActualHeight;
-        var easeOut = (IEasingFunction)Resources["EaseOut"];
+        double reach = Math.Max(w - origin.X, 1);
+        var soft = (IEasingFunction)Resources["EaseSoft"];
 
-        // 1. Flare on the button – fully described in the XAML.
-        var flare = Spawn<Ellipse>("Flare", origin.X - 120, origin.Y - 120);
-        Run("FlareIn", flare);
+        // 1. Bloom: wide, faint light around the button – fully described in the XAML.
+        var bloom = Spawn<Ellipse>("Bloom", 0, 0);
+        SetLeft(bloom, origin.X - (bloom.Width / 2));
+        SetTop(bloom, origin.Y - (bloom.Height / 2));
+        Run("BloomIn", bloom);
 
-        // 2. Wash: from the sidebar to the right edge.
-        double band = Math.Max(w * 0.45, 320);
+        // 2. Wash: a very wide band that slowly travels from the sidebar to the right edge.
+        double band = Math.Max(w * 0.75, 520);
         var wash = Spawn<Rectangle>("Wash", 0, -h * 0.2);
         wash.Width = band;
         wash.Height = h * 1.4;
         var washMove = (TranslateTransform)((TransformGroup)wash.RenderTransform).Children[1];
         washMove.BeginAnimation(TranslateTransform.XProperty,
-            Anim(origin.X - (band / 2), w + (band * 0.3), Ms(80), Ms(1200), (IEasingFunction)Resources["EaseInOut"]));
-        Fade(wash, Ms(80), Ms(1200), (0.2, 1), (0.7, 1), (1, 0));
+            Anim(origin.X - (band * 0.6), w - (band * 0.25), Ms(150), Ms(LightMs), soft));
+        Fade(wash, Ms(150), Ms(LightMs), (0.4, 1), (0.6, 1), (1, 0));
 
-        // 3. Aurora: big soft blobs that bloom out of the button and drift over the fields.
-        for (int i = 0; i < Blobs.Length; i++)
+        // 3. Aurora: large lights that are already (almost) full size, fade in one after another from left to
+        //    right and drift a little further away from the button while they glow.
+        foreach (var (fx, fy, fs, brush) in Blobs)
         {
-            var (fx, fy, fs, brush) = Blobs[i];
-            double size = Math.Max(h, 360) * fs;
+            double height = Math.Max(h, 420) * fs;
+            double width = height * 1.3; // wider than tall, so neighbours overlap into one wash
             var blob = Spawn<Ellipse>("Blob", 0, 0);
-            blob.Width = blob.Height = size;
+            blob.Width = width;
+            blob.Height = height;
             blob.Fill = (Brush)Resources[brush];
             var parts = ((TransformGroup)blob.RenderTransform).Children;
             var scale = (ScaleTransform)parts[0];
             var move = (TranslateTransform)parts[1];
 
-            var begin = Ms(i * 55);
-            var duration = Ms(1500 + (i * 40));
-            move.X = origin.X - (size / 2);
-            move.Y = origin.Y - (size / 2);
-            move.BeginAnimation(TranslateTransform.XProperty, Anim(move.X, (fx * w) - (size / 2), begin, duration, easeOut));
-            move.BeginAnimation(TranslateTransform.YProperty, Anim(move.Y, (fy * h) - (size / 2), begin, duration, easeOut));
-            scale.BeginAnimation(ScaleTransform.ScaleXProperty, Anim(0.15, 1, begin, duration, easeOut));
-            scale.BeginAnimation(ScaleTransform.ScaleYProperty, Anim(0.15, 1, begin, duration, easeOut));
-            Fade(blob, begin, duration, (0.18, 0.9), (0.6, 0.65), (1, 0));
+            // Rest position (centre) and a start position a short way back towards the button.
+            double restX = fx * w, restY = fy * h;
+            double startX = restX + ((origin.X - restX) * Drift);
+            double startY = restY + ((origin.Y - restY) * Drift);
+
+            // The further right a light rests, the later it starts – this is the wave.
+            var begin = Ms(120 + (SpreadMs * Math.Clamp((restX - origin.X) / reach, 0, 1)));
+            var duration = Ms(LightMs);
+
+            move.X = startX - (width / 2);
+            move.Y = startY - (height / 2);
+            move.BeginAnimation(TranslateTransform.XProperty, Anim(move.X, restX - (width / 2), begin, duration, soft));
+            move.BeginAnimation(TranslateTransform.YProperty, Anim(move.Y, restY - (height / 2), begin, duration, soft));
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, Anim(0.86, 1.08, begin, duration, soft));
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, Anim(0.86, 1.08, begin, duration, soft));
+            Fade(blob, begin, duration, (0.45, Peak), (0.6, Peak), (1, 0));
         }
     }
 
-    /// <summary>Glowing outline on a field (overlay coordinates) – the moment a file lands in it.</summary>
+    /// <summary>Soft glowing outline on a field (overlay coordinates) – the moment a file lands in it.</summary>
     public void Land(Rect target, double radius = 12)
     {
         if (!CanPlay || target.IsEmpty) return;
@@ -111,12 +132,15 @@ internal sealed partial class GlowSweep : Canvas
         storyboard.Begin();
     }
 
-    /// <summary>Opacity keyframes (time as fraction of <paramref name="duration"/>); the element is removed afterwards.</summary>
+    /// <summary>
+    /// Opacity keyframes (time as fraction of <paramref name="duration"/>), each reached on a slow-in / slow-out
+    /// curve so the light never pops; the element is removed afterwards.
+    /// </summary>
     private void Fade(UIElement element, TimeSpan begin, TimeSpan duration, params (double At, double Value)[] keys)
     {
         var fade = new DoubleAnimationUsingKeyFrames { BeginTime = begin, Duration = duration };
         fade.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromPercent(0)));
-        foreach (var (at, value) in keys) fade.KeyFrames.Add(new SplineDoubleKeyFrame(value, KeyTime.FromPercent(at), new KeySpline(0.4, 0, 0.2, 1)));
+        foreach (var (at, value) in keys) fade.KeyFrames.Add(new SplineDoubleKeyFrame(value, KeyTime.FromPercent(at), new KeySpline(0.45, 0, 0.55, 1)));
         fade.Completed += (_, _) => Children.Remove(element);
         element.BeginAnimation(OpacityProperty, fade);
     }

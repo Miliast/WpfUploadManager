@@ -154,14 +154,14 @@ public partial class SetupView : UserControl
         try
         {
             Glow.Play(AutoFillButton.TranslatePoint(new Point(AutoFillButton.ActualWidth / 2, AutoFillButton.ActualHeight / 2), Glow));
-            await Task.Delay(260); // let the light reach the fields first
+            await Task.Delay(520); // the light fades in slowly – let it reach the fields first
             foreach (var (slot, item) in matches)
             {
                 if (!Ws.IsSetup) break;
                 Ws.Assign(slot, item);
                 if (FieldRow(slot) is { IsVisible: true } row)
                     Glow.Land(row.TransformToVisual(Glow).TransformBounds(new Rect(row.RenderSize)), row.CornerRadius.TopLeft);
-                await Task.Delay(140);
+                await Task.Delay(180);
             }
         }
         finally

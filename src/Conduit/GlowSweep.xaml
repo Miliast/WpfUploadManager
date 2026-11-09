@@ -1,8 +1,9 @@
 <!--
     GlowSweep – aurora glow for auto-fill (look lives here, motion in GlowSweep.xaml.cs).
-    Everything the glow is made of is defined below as a template; x:Shared="False" hands out a fresh copy
-    on every FindResource, so several glows can play at the same time.
-    The code-behind only places the shapes (button → fields) and starts the animations.
+    The glow is a calm wave, not a burst: every light is large from the first frame and only its opacity rises
+    slowly, so nothing ever reads as a point. Lights fade in one after another from the sidebar to the right edge.
+    Everything is defined below as a template; x:Shared="False" hands out a fresh copy on every lookup,
+    so several glows can play at the same time. The code-behind only places the shapes and starts the animations.
 -->
 <Canvas x:Class="Conduit.GlowSweep"
         x:ClassModifier="internal"
@@ -19,71 +20,84 @@
         <Color x:Key="Orange">#FF9248</Color>
         <Color x:Key="Indigo">#3D6BFF</Color>
 
-        <!-- Soft light blobs: full colour in the middle, nothing at the rim (alpha 50 % → 22 % → 0). -->
+        <!--
+            Soft lights. Six stops follow a bell curve (alpha 42 % → 34 → 20 → 8 → 2 → 0), so there is no bright
+            core and no visible rim – neighbouring lights melt into one wash.
+            To make the whole glow stronger or fainter, change the first two alpha digits of each stop.
+        -->
         <RadialGradientBrush x:Key="BlobViolet">
-            <GradientStop Color="#807C5CFF" Offset="0" />
-            <GradientStop Color="#3A7C5CFF" Offset="0.4" />
+            <GradientStop Color="#6B7C5CFF" Offset="0" />
+            <GradientStop Color="#567C5CFF" Offset="0.2" />
+            <GradientStop Color="#327C5CFF" Offset="0.4" />
+            <GradientStop Color="#157C5CFF" Offset="0.6" />
+            <GradientStop Color="#067C5CFF" Offset="0.8" />
             <GradientStop Color="#007C5CFF" Offset="1" />
         </RadialGradientBrush>
         <RadialGradientBrush x:Key="BlobPink">
-            <GradientStop Color="#80FF4FA3" Offset="0" />
-            <GradientStop Color="#3AFF4FA3" Offset="0.4" />
+            <GradientStop Color="#6BFF4FA3" Offset="0" />
+            <GradientStop Color="#56FF4FA3" Offset="0.2" />
+            <GradientStop Color="#32FF4FA3" Offset="0.4" />
+            <GradientStop Color="#15FF4FA3" Offset="0.6" />
+            <GradientStop Color="#06FF4FA3" Offset="0.8" />
             <GradientStop Color="#00FF4FA3" Offset="1" />
         </RadialGradientBrush>
         <RadialGradientBrush x:Key="BlobOrange">
-            <GradientStop Color="#80FF9248" Offset="0" />
-            <GradientStop Color="#3AFF9248" Offset="0.4" />
+            <GradientStop Color="#6BFF9248" Offset="0" />
+            <GradientStop Color="#56FF9248" Offset="0.2" />
+            <GradientStop Color="#32FF9248" Offset="0.4" />
+            <GradientStop Color="#15FF9248" Offset="0.6" />
+            <GradientStop Color="#06FF9248" Offset="0.8" />
             <GradientStop Color="#00FF9248" Offset="1" />
         </RadialGradientBrush>
         <RadialGradientBrush x:Key="BlobIndigo">
-            <GradientStop Color="#803D6BFF" Offset="0" />
-            <GradientStop Color="#3A3D6BFF" Offset="0.4" />
+            <GradientStop Color="#6B3D6BFF" Offset="0" />
+            <GradientStop Color="#563D6BFF" Offset="0.2" />
+            <GradientStop Color="#323D6BFF" Offset="0.4" />
+            <GradientStop Color="#153D6BFF" Offset="0.6" />
+            <GradientStop Color="#063D6BFF" Offset="0.8" />
             <GradientStop Color="#003D6BFF" Offset="1" />
         </RadialGradientBrush>
 
+        <!-- Slow start, slow end – used for everything that drifts. -->
+        <SineEase x:Key="EaseSoft" EasingMode="EaseInOut" />
         <CubicEase x:Key="EaseOut" EasingMode="EaseOut" />
-        <CubicEase x:Key="EaseInOut" EasingMode="EaseInOut" />
 
-        <!-- ── 1. Flare: bright pulse right on the button ──────────────── -->
-        <Ellipse x:Key="Flare" x:Shared="False" Width="240" Height="240" Opacity="0" RenderTransformOrigin="0.5,0.5">
-            <Ellipse.Fill>
-                <RadialGradientBrush>
-                    <GradientStop Color="#BFFF4FA3" Offset="0" />
-                    <GradientStop Color="#56FF4FA3" Offset="0.4" />
-                    <GradientStop Color="#00FF4FA3" Offset="1" />
-                </RadialGradientBrush>
-            </Ellipse.Fill>
+        <!-- ── 1. Bloom: wide, faint light around the button – the wave starts here ── -->
+        <Ellipse x:Key="Bloom" x:Shared="False" Width="640" Height="640" Opacity="0"
+                 Fill="{StaticResource BlobViolet}" RenderTransformOrigin="0.5,0.5">
             <Ellipse.RenderTransform>
-                <ScaleTransform ScaleX="0.2" ScaleY="0.2" />
+                <ScaleTransform ScaleX="0.88" ScaleY="0.88" />
             </Ellipse.RenderTransform>
         </Ellipse>
 
-        <Storyboard x:Key="FlareIn" x:Shared="False">
+        <Storyboard x:Key="BloomIn" x:Shared="False">
             <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                             From="0.2" To="1.6" Duration="0:0:0.7" EasingFunction="{StaticResource EaseOut}" />
+                             From="0.88" To="1.12" Duration="0:0:2.0" EasingFunction="{StaticResource EaseSoft}" />
             <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                             From="0.2" To="1.6" Duration="0:0:0.7" EasingFunction="{StaticResource EaseOut}" />
-            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity" Duration="0:0:0.7">
+                             From="0.88" To="1.12" Duration="0:0:2.0" EasingFunction="{StaticResource EaseSoft}" />
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity" Duration="0:0:2.0">
                 <LinearDoubleKeyFrame Value="0" KeyTime="0%" />
-                <SplineDoubleKeyFrame Value="1" KeyTime="12%" KeySpline="0.4,0 0.2,1" />
-                <SplineDoubleKeyFrame Value="0" KeyTime="100%" KeySpline="0.4,0 0.2,1" />
+                <SplineDoubleKeyFrame Value="0.9" KeyTime="40%" KeySpline="0.45,0 0.55,1" />
+                <SplineDoubleKeyFrame Value="0" KeyTime="100%" KeySpline="0.45,0 0.55,1" />
             </DoubleAnimationUsingKeyFrames>
         </Storyboard>
 
-        <!-- ── 2. Wash: tilted band of colour that sweeps across the page ── -->
+        <!-- ── 2. Wash: very wide, faint band that slowly travels across the page ── -->
         <Rectangle x:Key="Wash" x:Shared="False" Opacity="0" RenderTransformOrigin="0.5,0.5">
             <Rectangle.Fill>
                 <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
                     <GradientStop Color="#007C5CFF" Offset="0" />
-                    <GradientStop Color="#297C5CFF" Offset="0.3" />
-                    <GradientStop Color="#38FF4FA3" Offset="0.55" />
-                    <GradientStop Color="#24FF9248" Offset="0.75" />
+                    <GradientStop Color="#0C7C5CFF" Offset="0.15" />
+                    <GradientStop Color="#1C7C5CFF" Offset="0.32" />
+                    <GradientStop Color="#22FF4FA3" Offset="0.52" />
+                    <GradientStop Color="#18FF9248" Offset="0.72" />
+                    <GradientStop Color="#08FF9248" Offset="0.87" />
                     <GradientStop Color="#00FF9248" Offset="1" />
                 </LinearGradientBrush>
             </Rectangle.Fill>
             <Rectangle.RenderTransform>
                 <TransformGroup>
-                    <SkewTransform AngleX="-14" />
+                    <SkewTransform AngleX="-12" />
                     <TranslateTransform />
                 </TransformGroup>
             </Rectangle.RenderTransform>
@@ -93,14 +107,14 @@
         <Ellipse x:Key="Blob" x:Shared="False" Opacity="0" RenderTransformOrigin="0.5,0.5">
             <Ellipse.RenderTransform>
                 <TransformGroup>
-                    <ScaleTransform ScaleX="0.15" ScaleY="0.15" />
+                    <ScaleTransform ScaleX="0.86" ScaleY="0.86" />
                     <TranslateTransform />
                 </TransformGroup>
             </Ellipse.RenderTransform>
         </Ellipse>
 
-        <!-- ── 4. Land: glowing outline on a field when its file drops in ── -->
-        <Border x:Key="LandRing" x:Shared="False" Opacity="0" BorderThickness="2" Background="#127C5CFF" RenderTransformOrigin="0.5,0.5">
+        <!-- ── 4. Land: soft glowing outline on a field when its file drops in ── -->
+        <Border x:Key="LandRing" x:Shared="False" Opacity="0" BorderThickness="1.5" Background="#0E7C5CFF" RenderTransformOrigin="0.5,0.5">
             <Border.BorderBrush>
                 <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
                     <GradientStop Color="{StaticResource Violet}" Offset="0" />
@@ -109,23 +123,23 @@
                 </LinearGradientBrush>
             </Border.BorderBrush>
             <Border.Effect>
-                <DropShadowEffect Color="{StaticResource Pink}" BlurRadius="28" ShadowDepth="0" Opacity="0.7" />
+                <DropShadowEffect Color="{StaticResource Pink}" BlurRadius="36" ShadowDepth="0" Opacity="0.45" />
             </Border.Effect>
             <Border.RenderTransform>
-                <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
+                <ScaleTransform ScaleX="0.985" ScaleY="0.985" />
             </Border.RenderTransform>
         </Border>
 
         <Storyboard x:Key="LandIn" x:Shared="False">
             <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                             From="0.97" To="1" Duration="0:0:0.35" EasingFunction="{StaticResource EaseOut}" />
+                             From="0.985" To="1" Duration="0:0:0.6" EasingFunction="{StaticResource EaseOut}" />
             <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                             From="0.97" To="1" Duration="0:0:0.35" EasingFunction="{StaticResource EaseOut}" />
-            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity" Duration="0:0:0.95">
+                             From="0.985" To="1" Duration="0:0:0.6" EasingFunction="{StaticResource EaseOut}" />
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity" Duration="0:0:1.3">
                 <LinearDoubleKeyFrame Value="0" KeyTime="0%" />
-                <SplineDoubleKeyFrame Value="1" KeyTime="15%" KeySpline="0.4,0 0.2,1" />
-                <SplineDoubleKeyFrame Value="1" KeyTime="45%" KeySpline="0.4,0 0.2,1" />
-                <SplineDoubleKeyFrame Value="0" KeyTime="100%" KeySpline="0.4,0 0.2,1" />
+                <SplineDoubleKeyFrame Value="1" KeyTime="30%" KeySpline="0.45,0 0.55,1" />
+                <SplineDoubleKeyFrame Value="1" KeyTime="50%" KeySpline="0.45,0 0.55,1" />
+                <SplineDoubleKeyFrame Value="0" KeyTime="100%" KeySpline="0.45,0 0.55,1" />
             </DoubleAnimationUsingKeyFrames>
         </Storyboard>
 
