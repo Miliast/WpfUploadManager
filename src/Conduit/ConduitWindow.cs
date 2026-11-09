@@ -71,9 +71,13 @@ public sealed class ConduitWindow : Window
     // Regions + live labels that update without a rebuild.
     private readonly Border _header = new() { Height = 56, Background = White, BorderBrush = Line, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(20, 0, 16, 0) };
     private readonly Border _sidebar = new() { Width = 300, Background = White, BorderBrush = Line, BorderThickness = new Thickness(0, 0, 1, 0), AllowDrop = true };
-    private readonly Border _content = new() { Background = Page, AllowDrop = true };
+    private readonly Border _content = new() { Background = Ui.Page, AllowDrop = true };
     private readonly ScrollViewer _treeHost = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     private readonly FrameworkElement _spinner = Spinner();   // reused so its animation doesn't restart on every re-render
+    private readonly GlowSweep _glow = new();                 // overlay above sidebar + content, survives re-renders
+    private readonly Border?[] _slotRows = new Border?[5];    // the five field rows of the current render (glow targets)
+    private Button? _autoFill;
+    private bool _filling;
     private TextBlock? _timerText, _runningTime, _etaText;
     private ScrollViewer? _listScroll;
     private double _listOffset;
@@ -101,7 +105,7 @@ public sealed class ConduitWindow : Window
         var root = new DockPanel();
         DockPanel.SetDock(_header, Dock.Top);
         root.Children.Add(_header);
-        root.Children.Add(body);
+        root.Children.Add(new Grid { Children = { body, _glow } });
         Content = root;
 
         // Dropping anywhere on the page fills the matching fields; a folder on the empty sidebar opens it as project.
@@ -284,7 +288,14 @@ public sealed class ConduitWindow : Window
         var filter = Box(Row(8, Ui.Icon(SearchIcon, Subtle, 13), Grow(field)), White, 8, new Thickness(10, 0, 10, 0), h: 32, border: Line);
         filter.Margin = new Thickness(14, 0, 14, 12);
 
-        var hint = Box(Row(10, Ui.Icon(UploadIcon, Muted, 13), T("Drag files from here onto a field", 12, Muted)), pad: new Thickness(20, 12, 20, 12), border: Line);
+        // Auto-fill: puts every matching file of the tree into its empty field, with the glow flowing out of this button.
+        int matches = Matches().Count;
+        string label = matches > 0 ? $"Auto-fill {matches} field{(matches == 1 ? "" : "s")}" : MissingCount() == 0 ? "All fields filled" : "No matching files left";
+        _autoFill = Btn(Row(8, Ui.Icon(GlowSweep.SparkleIcon, null, 13, 0, filled: true), T(label)), Dark, AutoFill, 36, new Thickness(14, 0, 14, 0));
+        _autoFill.IsEnabled = matches > 0 && !_filling;
+        var dragHint = Row(10, Ui.Icon(UploadIcon, Muted, 13), T("…or drag files from here onto a field", 12, Muted));
+        dragHint.Margin = new Thickness(6, 0, 0, 0);
+        var hint = Box(Stack(12, _autoFill, dragHint), pad: new Thickness(14, 12, 14, 12), border: Line);
         hint.BorderThickness = new Thickness(0, 1, 0, 0);
 
         _treeHost.Content = BuildTree();
@@ -469,6 +480,7 @@ public sealed class ConduitWindow : Window
             Height = 68, CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(2), BorderBrush = Clear, Background = Clear,
             Padding = new Thickness(14, 0, 14, 0), AllowDrop = true, Child = Row(14, glyph, Grow(Stack(2, title, sub)), action),
         };
+        _slotRows[i] = row;
         void Highlight(bool on)
         {
             row.Background = on ? BlueSoft : Clear;
@@ -562,7 +574,7 @@ public sealed class ConduitWindow : Window
             stats.Add(null);
             _etaText = T(running ? Eta(node) : _exportState == 2 ? "Exported" : "Ready to export", 13, Subtle);
             stats.Add(_etaText);
-            var bar = Bar(node.Passed, node.Failed, node.Aborted, node.Total, 3, Track);
+            var bar = Bar(node.Passed, node.Failed, node.Aborted, node.Total, 3, Ui.Track);
             bar.Margin = new Thickness(0, 12, 0, 0);
             header = new Border { Padding = new Thickness(20, 16, 20, 16), Child = Stack(0, Row(10, stats.ToArray()), bar) };
         }
@@ -623,7 +635,7 @@ public sealed class ConduitWindow : Window
         if (n.Failed > 0) counts.Add(T($"{n.Failed}", 11, RedText, Semi));
         if (n.Aborted > 0) counts.Add(T($"{n.Aborted}", 11, AmberText, Semi));
         counts.Add(T($"{n.Done}/{n.Total}", 12, sel ? Subtle : Faint));
-        var tab = Btn(Stack(8, Row(8, counts.ToArray()), Bar(n.Passed, n.Failed, n.Aborted, n.Total, 2, sel ? TrackDark : Track)), Tab,
+        var tab = Btn(Stack(8, Row(8, counts.ToArray()), Bar(n.Passed, n.Failed, n.Aborted, n.Total, 2, sel ? TrackDark : Ui.Track)), Tab,
             () => { _sel = i; _showAll = false; _listOffset = 0; RenderContent(); }, pad: new Thickness(14, 9, 14, 9));
         tab.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         tab.Margin = new Thickness(i == 0 ? 0 : 2, 0, 0, 0);
@@ -762,20 +774,54 @@ public sealed class ConduitWindow : Window
         Scan(root, "");
         IndexTree();
         Array.Clear(_slotValues);
+        foreach (var (slot, item) in Matches()) Assign(slot, item, render: false);
 
+        _expanded.Clear();
+        if (_slotValues[0]?.Rel is { } tests) _expanded.Add(tests);
+        RenderAll();
+    }
+
+    /// <summary>Best file of the project tree for every field that is still empty (test folder, package.json, entry file, Dockerfile, workflow).</summary>
+    private List<(int Slot, (string Name, bool Dir, long Size, string? Full, string? Rel) Item)> Matches()
+    {
+        var found = new (string Rel, bool Dir, long Size)?[Slots.Length];
         var tests = _tree.FirstOrDefault(t => t.Dir && t.Rel.Count(c => c == '/') < 2 && FileName(t.Rel).ToLowerInvariant() is "tests" or "test" or "__tests__" or "spec" or "e2e");
-        if (tests.Rel is not null) Assign(0, Item(tests), render: false);
+        if (tests.Rel is not null) found[0] = tests;
         foreach (var rel in new[] { "package.json", "src/index.ts", "src/index.tsx", "src/index.js", "index.ts", "index.js", "Dockerfile" })
         {
             var e = _tree.FirstOrDefault(t => !t.Dir && t.Rel.Equals(rel, StringComparison.OrdinalIgnoreCase));
-            if (e.Rel is not null && _slotValues[SlotFor(FileName(e.Rel), false)] is null) Assign(SlotFor(FileName(e.Rel), false), Item(e), render: false);
+            if (e.Rel is not null) found[SlotFor(FileName(e.Rel), false)] ??= e;
         }
         var yml = _tree.FirstOrDefault(t => !t.Dir && t.Rel.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase) && SlotFor(t.Rel, false) == 4);
-        if (yml.Rel is not null) Assign(4, Item(yml), render: false);
+        if (yml.Rel is not null) found[4] = yml;
 
-        _expanded.Clear();
-        if (tests.Rel is not null) _expanded.Add(tests.Rel);
-        RenderAll();
+        var result = new List<(int, (string, bool, long, string?, string?))>();
+        for (int i = 0; i < found.Length; i++)
+            if (found[i] is { } e && _slotValues[i] is null) result.Add((i, Item(e)));
+        return result;
+    }
+
+    /// <summary>Sidebar button: the glow flows out of the button, then the files drop into their fields one after another.</summary>
+    private async void AutoFill()
+    {
+        var matches = Matches();
+        if (_filling || matches.Count == 0 || _autoFill is null) return;
+        _filling = true;
+        _autoFill.IsEnabled = false;
+        _glow.Play(_autoFill.TranslatePoint(new Point(_autoFill.ActualWidth / 2, _autoFill.ActualHeight / 2), _glow));
+
+        await Task.Delay(260); // let the light reach the fields first
+        foreach (var (slot, item) in matches)
+        {
+            if (_screen != Screen.Setup) break;
+            Assign(slot, item);
+            UpdateLayout(); // the rows were just rebuilt – measure them so the glow lands in the right place
+            if (_slotRows[slot] is { IsVisible: true } row)
+                _glow.Land(row.TransformToVisual(_glow).TransformBounds(new Rect(row.RenderSize)), row.CornerRadius.TopLeft);
+            await Task.Delay(140);
+        }
+        _filling = false;
+        if (_screen == Screen.Setup) RenderSidebar();
     }
 
     private void Scan(string dir, string rel)
