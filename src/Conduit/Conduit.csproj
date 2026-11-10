@@ -4,7 +4,8 @@
     Conduit UI demo: the Paper design as XAML + code-behind (no NuGet packages):
       App.xaml        – design tokens from Paper: colours, fonts, icons, buttons, scroll bars, menus
       MainWindow      – top bar, shortcuts, Windows taskbar progress (screen 7)
-      SetupView       – screens 1–2: project sidebar, the five fields, "Get data from X", drag & drop
+      TaskbarPreview  – the card Windows shows when hovering the taskbar button: all nodes (multi) or the one job (single)
+      SetupView       –screens 1–2: project sidebar, the five fields, "Get data from X", drag & drop
       RunView         – screens 3–6: node tabs / summary, filters, test list, log panel
       Workspace       – state + logic of all screens (the views bind to it)
       PipelineNode    – one pipeline node, its tests and a fake runner that advances them

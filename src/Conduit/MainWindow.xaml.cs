@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Shell;
 
 using LogoLoader;
@@ -23,6 +24,9 @@ public partial class MainWindow : Window
 {
     private readonly Workspace _ws = new();
     private string _overlayKey = "";
+    private IntPtr _hwnd;
+    private bool _ownThumbnail;
+    private TaskbarPreview? _preview;
 
     public MainWindow()
     {
@@ -67,6 +71,11 @@ public partial class MainWindow : Window
         int caption = 0x00FFFFFF, border = 0x00ECE8E6; // COLORREF = 0x00BBGGRR
         _ = DwmSetWindowAttribute(hwnd, 35, ref caption, sizeof(int));
         _ = DwmSetWindowAttribute(hwnd, 34, ref border, sizeof(int));
+
+        // Taskbar hover preview: Windows asks this window for the picture instead of shrinking the whole window.
+        _hwnd = hwnd;
+        HwndSource.FromHwnd(hwnd)?.AddHook(TaskbarHook);
+        UpdatePreview();
     }
 
     // ── Busy overlay: fades in softly, and out only after the loader's logo has landed ──
@@ -156,6 +165,7 @@ public partial class MainWindow : Window
         ThumbStop.Visibility = _ws.IsRunning ? Visibility.Visible : Visibility.Collapsed;
         ThumbLogs.Visibility = _ws.IsRun ? Visibility.Visible : Visibility.Collapsed;
         ThumbExport.Visibility = _ws.IsFinished ? Visibility.Visible : Visibility.Collapsed;
+        UpdatePreview();
 
         if (_ws.IsSetup)
         {
@@ -229,6 +239,118 @@ public partial class MainWindow : Window
     }
 
     private static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
+
+    // ── Hover preview ("Detail on demand"): all nodes in multi mode, the one job in single mode ──
+
+    /// <summary>
+    /// During and after a run the thumbnail is our own card (<see cref="TaskbarPreview"/>); on the setup screen it stays
+    /// the normal picture of the window. Windows keeps the last card and only asks again after it was marked as outdated.
+    /// </summary>
+    private void UpdatePreview()
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        Title = _ws.IsSetup ? "Conduit" : $"Conduit · {_ws.Crumb}"; // the title line above the card
+        bool own = !_ws.IsSetup;
+        if (own != _ownThumbnail)
+        {
+            _ownThumbnail = own;
+            int on = own ? 1 : 0;
+            _ = DwmSetWindowAttribute(_hwnd, 7, ref on, sizeof(int));  // DWMWA_FORCE_ICONIC_REPRESENTATION
+            _ = DwmSetWindowAttribute(_hwnd, 10, ref on, sizeof(int)); // DWMWA_HAS_ICONIC_BITMAP
+        }
+        if (own) _ = DwmInvalidateIconicBitmaps(_hwnd);
+    }
+
+    private IntPtr TaskbarHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (!_ownThumbnail) return IntPtr.Zero;
+        if (msg == 0x0323) // WM_DWMSENDICONICTHUMBNAIL: the mouse is over the taskbar button
+        {
+            long size = lParam.ToInt64();
+            int maxWidth = (int)((size >> 16) & 0xFFFF), maxHeight = (int)(size & 0xFFFF);
+            if (maxWidth > 0 && maxHeight > 0)
+            {
+                _preview ??= new TaskbarPreview();
+                SendBitmap(_preview.Render(_ws, maxWidth, maxHeight), hbmp => DwmSetIconicThumbnail(hwnd, hbmp, 0));
+            }
+            handled = true;
+        }
+        else if (msg == 0x0326 && Content is FrameworkElement { ActualWidth: > 0, ActualHeight: > 0 } root)
+        {
+            // WM_DWMSENDICONICLIVEPREVIEWBITMAP: the mouse is over the card itself – Windows "peeks" at the real window.
+            var dpi = VisualTreeHelper.GetDpi(this);
+            var area = new Rect(0, 0, root.ActualWidth, root.ActualHeight);
+            var picture = new DrawingVisual();
+            using (var dc = picture.RenderOpen())
+            {
+                dc.DrawRectangle(Background, null, area);
+                dc.DrawRectangle(new VisualBrush(root) { Stretch = Stretch.None }, null, area);
+            }
+            var bitmap = new RenderTargetBitmap((int)(area.Width * dpi.DpiScaleX), (int)(area.Height * dpi.DpiScaleY),
+                dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+            bitmap.Render(picture);
+            SendBitmap(bitmap, hbmp => DwmSetIconicLivePreviewBitmap(hwnd, hbmp, IntPtr.Zero, 1)); // 1 = draw the window frame around it
+            handled = true;
+        }
+        return IntPtr.Zero;
+    }
+
+    /// <summary>DWM wants a 32-bit GDI bitmap: copy the WPF pixels into one, hand it over, free it.</summary>
+    private static void SendBitmap(BitmapSource source, Func<IntPtr, int> send)
+    {
+        int width = source.PixelWidth, height = source.PixelHeight;
+        var header = new BITMAPINFOHEADER
+        {
+            biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>(),
+            biWidth = width,
+            biHeight = -height, // negative = rows from top to bottom, like WPF
+            biPlanes = 1,
+            biBitCount = 32,
+        };
+        IntPtr hbmp = CreateDIBSection(IntPtr.Zero, ref header, 0, out IntPtr bits, IntPtr.Zero, 0);
+        if (hbmp == IntPtr.Zero) return;
+        try
+        {
+            source.CopyPixels(Int32Rect.Empty, bits, width * 4 * height, width * 4);
+            _ = send(hbmp);
+        }
+        finally
+        {
+            _ = DeleteObject(hbmp);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAPINFOHEADER
+    {
+        public uint biSize;
+        public int biWidth;
+        public int biHeight;
+        public ushort biPlanes;
+        public ushort biBitCount;
+        public uint biCompression;
+        public uint biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public uint biClrUsed;
+        public uint biClrImportant;
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetIconicThumbnail(IntPtr hwnd, IntPtr hbmp, uint flags);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetIconicLivePreviewBitmap(IntPtr hwnd, IntPtr hbmp, IntPtr clientOffset, uint flags);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmInvalidateIconicBitmaps(IntPtr hwnd);
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateDIBSection(IntPtr hdc, ref BITMAPINFOHEADER header, uint usage, out IntPtr bits, IntPtr section, uint offset);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteObject(IntPtr handle);
 
     private void Flash()
     {
