@@ -1,0 +1,146 @@
+<!--
+    ModeSwitch – the two-option pill above the fields card (Paper: "Mode switch", artboards 1b / 1c).
+    Look lives here, motion in ModeSwitch.xaml.cs:
+      · the white thumb slides to the chosen side and stretches a little on the way (its front edge leaves first),
+      · the labels cross-fade between muted and black,
+      · a wide, faint aurora wash breathes once across the whole track – full size from the first frame, only its
+        opacity moves, so nothing bursts out of a point.
+
+    Use:  <local:ModeSwitch FirstText="Node" SecondText="Python" SelectedIndex="{Binding Mode}" />
+-->
+<UserControl x:Class="Conduit.ModeSwitch"
+             x:ClassModifier="internal"
+             x:Name="Root"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Height="34"
+             HorizontalAlignment="Left"
+             Focusable="False"
+             SnapsToDevicePixels="True"
+             UseLayoutRounding="True">
+
+    <UserControl.Resources>
+
+        <!-- Keyboard focus ring: follows the segment's pill shape. -->
+        <Style x:Key="SegmentFocus">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle RadiusX="14" RadiusY="14" Stroke="{StaticResource Blue}" StrokeThickness="1.5" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- One segment: just a label on a transparent pill. The white thumb underneath is shared by both. -->
+        <Style x:Key="Segment" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource SegmentFocus}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Hit" Height="28" Padding="16,0" CornerRadius="14" Background="Transparent">
+                            <TextBlock x:Name="Label"
+                                       Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"
+                                       FontFamily="{StaticResource Sans}" FontSize="13" FontWeight="SemiBold"
+                                       VerticalAlignment="Center">
+                                <TextBlock.Foreground>
+                                    <SolidColorBrush Color="#5B6270" /><!-- Muted -->
+                                </TextBlock.Foreground>
+                            </TextBlock>
+                        </Border>
+                        <ControlTemplate.Triggers>
+
+                            <!-- Label cross-fade: muted ↔ black. -->
+                            <Trigger Property="IsChecked" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <ColorAnimation Storyboard.TargetName="Label"
+                                                            Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)"
+                                                            To="#000000" Duration="0:0:0.26">
+                                                <ColorAnimation.EasingFunction>
+                                                    <SineEase EasingMode="EaseInOut" />
+                                                </ColorAnimation.EasingFunction>
+                                            </ColorAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <ColorAnimation Storyboard.TargetName="Label"
+                                                            Storyboard.TargetProperty="(TextBlock.Foreground).(SolidColorBrush.Color)"
+                                                            To="#5B6270" Duration="0:0:0.26">
+                                                <ColorAnimation.EasingFunction>
+                                                    <SineEase EasingMode="EaseInOut" />
+                                                </ColorAnimation.EasingFunction>
+                                            </ColorAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+
+                            <!-- Hover on the side that is not selected: a barely-there darker pill. -->
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="IsChecked" Value="False" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Hit" Property="Background" Value="#0D0B0D12" />
+                            </MultiTrigger>
+
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </UserControl.Resources>
+
+    <Grid>
+
+        <!-- Track -->
+        <Border CornerRadius="17" Background="#E8EAED" />
+
+        <!--
+            Aurora wash (same violet → pink → orange as GlowSweep). It always covers the whole track; the code-behind
+            only raises and lowers its opacity and lets the colours drift a little towards the chosen side.
+            To make it stronger or fainter, change the first two alpha digits of each stop.
+        -->
+        <Border x:Name="Wash" CornerRadius="17" Opacity="0" IsHitTestVisible="False">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                    <LinearGradientBrush.RelativeTransform>
+                        <TranslateTransform x:Name="WashShift" />
+                    </LinearGradientBrush.RelativeTransform>
+                    <GradientStop Color="#387C5CFF" Offset="0" />
+                    <GradientStop Color="#40FF4FA3" Offset="0.5" />
+                    <GradientStop Color="#38FF9248" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <!-- Thumb: positioned and sized by the code-behind (Canvas.Left + Width). -->
+        <Canvas x:Name="ThumbLayer" Margin="3" IsHitTestVisible="False">
+            <Border x:Name="Thumb" Height="28" Width="0" CornerRadius="14" Background="{StaticResource White}">
+                <Border.Effect>
+                    <DropShadowEffect Color="#0B0D12" Opacity="0.12" BlurRadius="3" ShadowDepth="1" Direction="270" />
+                </Border.Effect>
+            </Border>
+        </Canvas>
+
+        <!-- Segments -->
+        <StackPanel Orientation="Horizontal" Margin="3"
+                    KeyboardNavigation.TabNavigation="Once"
+                    KeyboardNavigation.DirectionalNavigation="None">
+            <RadioButton x:Name="First" Style="{StaticResource Segment}"
+                         Content="{Binding FirstText, ElementName=Root}"
+                         Checked="OnSegmentChecked" SizeChanged="OnSegmentSizeChanged" />
+            <RadioButton x:Name="Second" Style="{StaticResource Segment}"
+                         Content="{Binding SecondText, ElementName=Root}"
+                         Checked="OnSegmentChecked" SizeChanged="OnSegmentSizeChanged" />
+        </StackPanel>
+
+    </Grid>
+</UserControl>
