@@ -2,7 +2,7 @@ namespace Conduit;
 
 public enum TestState { Queued, Running, Passed, Failed, Aborted }
 
-public enum LogKind { Run, Pass, Fail, Warn, Request, Response, Waiting }
+public enum LogKind { Run, Pass, Fail, Abort, Warn, Request, Response, Waiting }
 
 /// <summary>One test of a node. Rows in the list bind to it and update in place when its state changes.</summary>
 public sealed class TestItem : Observable
@@ -37,6 +37,9 @@ public sealed class LogLine(int node, string nodeName, string time, LogKind kind
     private bool _showCursor;
 
     public int Node { get; } = node;
+
+    /// <summary>Shown in the coloured node column of the log (multi mode).</summary>
+    public string NodeName { get; } = nodeName;
     public string NodePrefix { get; } = $"[{nodeName}] ";
     public string Time { get; } = time;
     public LogKind Kind { get; } = kind;
@@ -49,6 +52,7 @@ public sealed class LogLine(int node, string nodeName, string time, LogKind kind
         LogKind.Pass => "PASS",
         LogKind.Run => "RUN",
         LogKind.Fail => "FAIL",
+        LogKind.Abort => "ABORT",
         LogKind.Warn => "WARN",
         LogKind.Request => "→",
         LogKind.Response => "←",
@@ -112,6 +116,11 @@ public sealed class PipelineNode : Observable
 
     /// <summary>All tests ran (check icon); a stopped node keeps its progress ring.</summary>
     public bool IsComplete => Finished && !Stopped;
+    /// <summary>
+    /// Fill level of the squircle node icon in quarter steps: 0 = empty outline, 1–3 = 25 / 50 / 75 %, 4 = all tests ran.
+    /// A node that is still running never shows more than three quarters.
+    /// </summary>
+    public int Quarter => IsComplete ? 4 : Math.Min(3, (int)Math.Round(Fraction * 4, MidpointRounding.AwayFromZero));
     public bool HasFailed => Failed > 0;
     public bool HasAborted => Aborted > 0;
     public string ProgressText => $"{Done}/{Total}";
@@ -151,7 +160,7 @@ public sealed class PipelineNode : Observable
         {
             case TestState.Passed: log(LogKind.Pass, $"#{test.No} {test.Name}", test.TimeText); break;
             case TestState.Failed: log(LogKind.Fail, $"#{test.No} {test.Name}", note); break;
-            default: log(LogKind.Warn, $"#{test.No} {test.Name} aborted: {note}", ""); break;
+            default: log(LogKind.Abort, $"#{test.No} {test.Name}", note); break;
         }
         // … and start the next one right away.
         Start(_tests.Find(t => t.State == TestState.Queued), log);

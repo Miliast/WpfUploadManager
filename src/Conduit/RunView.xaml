@@ -1,6 +1,26 @@
 <!--
-    Screens 3–6 (Running / Finished): run sidebar, the test card (node tabs in multi mode, summary line in single mode),
-    state filters, the test list with the live "Running" row, and the log panel (Ctrl+L).
+    RunView – screens 3–6 (Running / Finished), built from the Paper artboard "9c · Running — logs, light well".
+
+    ┌───────────────────────────── MainWindow top bar (56) ─────────────────────────────┐
+    │ Sidebar (300, on the grey shell)  │  Sheet (white, radius 14, inset 8 right/bottom) │
+    │                                   │  ┌ Node tabs ─ one pill per node (multi) ─────┐ │
+    │  THIS RUN                         │  │   or the summary line (single)             │ │
+    │  project name                     │  ├ Test map ─ one cell per test ──────────────┤ │
+    │  mode text                        │  ├ Toolbar ─ All / Passed / Failed / Aborted ─┤ │
+    │                                   │  ├ Test list ─ running row + finished rows ───┤ │
+    │  INPUTS                           │  │   (scrolls, takes the remaining height)    │ │
+    │  folder / file rows               │  └────────────────────────────────────────────┘ │
+    │                                   │  ┌ Log panel (272, Ctrl+L) ───────────────────┐ │
+    │                                   │  │ header: Logs · filter · search · close     │ │
+    │                                   │  │ well:   time · node · glyph · message      │ │
+    └───────────────────────────────────┴──┴────────────────────────────────────────────┴─┘
+
+    Where things live:
+      · colours, fonts, buttons, spinner ........ App.xaml
+      · data (nodes, tests, log lines) .......... Workspace.cs / PipelineNode.cs
+      · scroll handling + click forwarding ...... RunView.xaml.cs
+
+    All sizes below are device-independent pixels taken from the Paper file (get_jsx), not from screenshots.
 -->
 <UserControl x:Class="Conduit.RunView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -14,29 +34,60 @@
 
     <UserControl.Resources>
 
-        <!-- ── Node status icon (14 px): progress ring, or green check when all tests ran; red/amber dot on problems.
-               Ring colour = the ContentControl's Foreground, ring of the dot = its Tag (the background behind it). -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             1 · NODE ICON (16 × 16) – the squircle in the node tabs and in the single-mode header
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             Parts, all drawn in a 16-unit box:
+               Outline ... rounded square, 1.5 stroke; its outer edge runs from 1.25 to 14.75
+               Wedge ..... the fill, 1.15 away from the outline, in quarter steps (PipelineNode.Quarter):
+                           0 = nothing, 1 = top-right quarter, 2 = right half, 3 = right half + bottom-left
+               Done ...... solid green squircle with a white check once every test ran (Quarter = 4)
+               Dot ....... red (failed) or amber (aborted) badge on the top-right corner
+
+             Colours come from the host ContentControl, so one template serves the selected and the idle tab:
+               Foreground = outline + wedge colour
+               Tag        = colour of the thin ring around the dot (must equal the background behind the icon)
+        -->
         <DataTemplate x:Key="NodeIcon" DataType="{x:Type local:PipelineNode}">
-            <Grid Width="14" Height="14">
-                <Grid x:Name="Ring">
-                    <Ellipse Margin="0.25" StrokeThickness="1.5"
-                             Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}" />
-                    <Path Data="{Binding Fraction, Converter={StaticResource Pie}}"
-                          Fill="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}" />
-                </Grid>
-                <Grid x:Name="Check" Visibility="Collapsed">
-                    <Ellipse Fill="{StaticResource Green}" />
-                    <local:PathIcon Data="{StaticResource Geo.Check8}" Box="8" Width="8" Height="8" StrokeThickness="1.6" Foreground="White" />
-                </Grid>
-                <Ellipse x:Name="Dot" Width="10" Height="10" Margin="0,-4.5,-4.5,0" HorizontalAlignment="Right" VerticalAlignment="Top"
-                         StrokeThickness="1.5" Visibility="Collapsed"
+            <Canvas Width="16" Height="16">
+
+                <Rectangle x:Name="Outline" Canvas.Left="1.25" Canvas.Top="1.25" Width="13.5" Height="13.5"
+                           RadiusX="4.95" RadiusY="4.95" StrokeThickness="1.5"
+                           Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}" />
+
+                <!-- Data is set by the Quarter triggers below; empty while nothing has finished yet. -->
+                <Path x:Name="Wedge" Fill="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}" />
+
+                <Rectangle x:Name="DoneFill" Canvas.Left="1.25" Canvas.Top="1.25" Width="13.5" Height="13.5"
+                           RadiusX="4.9" RadiusY="4.9" Fill="{StaticResource Green}" Visibility="Collapsed" />
+                <Path x:Name="DoneCheck" Data="M4.9,8.2 L7,10.3 L11.1,6.1" Stroke="White" StrokeThickness="1.7"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed" />
+
+                <!-- Centre (13.2, 2.8), radius 2.6 plus a 1.3 ring in the background colour. -->
+                <Ellipse x:Name="Dot" Canvas.Left="9.95" Canvas.Top="-0.45" Width="6.5" Height="6.5"
+                         StrokeThickness="1.3" Visibility="Collapsed"
                          Stroke="{Binding Tag, RelativeSource={RelativeSource AncestorType=ContentControl}}" />
-            </Grid>
+            </Canvas>
             <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding IsComplete}" Value="True">
-                    <Setter TargetName="Ring" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                <DataTrigger Binding="{Binding Quarter}" Value="1">
+                    <Setter TargetName="Wedge" Property="Data"
+                            Value="M8.5,3.9 H9.7 A2.4,2.4 0 0 1 12.1,6.3 V7.5 A0.5,0.5 0 0 1 11.6,8 H8.5 A0.5,0.5 0 0 1 8,7.5 V4.4 A0.5,0.5 0 0 1 8.5,3.9 Z" />
                 </DataTrigger>
+                <DataTrigger Binding="{Binding Quarter}" Value="2">
+                    <Setter TargetName="Wedge" Property="Data"
+                            Value="M8.5,3.9 H9.7 A2.4,2.4 0 0 1 12.1,6.3 V9.7 A2.4,2.4 0 0 1 9.7,12.1 H8.5 A0.5,0.5 0 0 1 8,11.6 V4.4 A0.5,0.5 0 0 1 8.5,3.9 Z" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Quarter}" Value="3">
+                    <Setter TargetName="Wedge" Property="Data"
+                            Value="M8.5,3.9 H9.7 A2.4,2.4 0 0 1 12.1,6.3 V9.7 A2.4,2.4 0 0 1 9.7,12.1 H6.3 A2.4,2.4 0 0 1 3.9,9.7 V8.5 A0.5,0.5 0 0 1 4.4,8 H7.5 A0.5,0.5 0 0 0 8,7.5 V4.4 A0.5,0.5 0 0 1 8.5,3.9 Z" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Quarter}" Value="4">
+                    <Setter TargetName="Outline" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="Wedge" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="DoneFill" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="DoneCheck" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <!-- Order matters: a node with both shows red, because the later trigger wins. -->
                 <DataTrigger Binding="{Binding HasAborted}" Value="True">
                     <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
                     <Setter TargetName="Dot" Property="Fill" Value="{StaticResource Amber}" />
@@ -48,7 +99,12 @@
             </DataTemplate.Triggers>
         </DataTemplate>
 
-        <!-- ── Segmented progress bar: passed | failed | aborted | rest. Track colour = the ContentControl's Tag. -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             2 · SEGMENTED PROGRESS BAR – passed | failed | aborted | rest
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             Four star-sized columns whose weights are the four counts, so the bar needs no code.
+             The track colour (the "rest" part) is the host ContentControl's Tag.
+        -->
         <DataTemplate x:Key="ProgressBar" DataType="{x:Type local:PipelineNode}">
             <Border CornerRadius="1.5" local:Look.ClipToCorners="True"
                     Background="{Binding Tag, RelativeSource={RelativeSource AncestorType=ContentControl}}">
@@ -66,7 +122,12 @@
             </Border>
         </DataTemplate>
 
-        <!-- ── Node tabs (multi mode) ───────────────────────────────────────── -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             3 · NODE TABS (multi mode) – "Job pills header" in Paper
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             Container: pill with 14 × 9 padding and radius 10; 4 px between pills (2 px margin each side).
+             Idle = transparent, hover = #F6F7F8, selected = LineSoft (#F0F1F3).
+        -->
         <Style x:Key="NodeTab" TargetType="ListBoxItem">
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
@@ -89,11 +150,18 @@
             </Setter>
         </Style>
 
+        <!--
+            Content of one tab, two lines:
+              line 1 (16 high) ... icon 16 · 8 · name (fills) · 8 · failed count · 8 · aborted count · 8 · "24/50"
+              line 2 ............. 2 px progress bar, 8 below line 1
+            Idle tab: grey icon (Faint), Medium name in Muted. Selected tab: blue icon, SemiBold black name, darker track.
+        -->
         <DataTemplate x:Key="NodeTabTemplate" DataType="{x:Type local:PipelineNode}">
             <StackPanel>
                 <DockPanel>
                     <ContentControl x:Name="Icon" DockPanel.Dock="Left" Content="{Binding}" ContentTemplate="{StaticResource NodeIcon}"
-                                    Focusable="False" Foreground="{StaticResource Faintest}" Tag="{StaticResource White}" />
+                                    Focusable="False" VerticalAlignment="Center"
+                                    Foreground="{StaticResource Faint}" Tag="{StaticResource White}" />
                     <TextBlock x:Name="Progress" DockPanel.Dock="Right" Text="{Binding ProgressText}" Margin="8,0,0,0" FontSize="12"
                                Foreground="{StaticResource Faint}" VerticalAlignment="Center" />
                     <TextBlock DockPanel.Dock="Right" Text="{Binding Aborted}" Margin="8,0,0,0" FontSize="11" FontWeight="SemiBold"
@@ -120,7 +188,43 @@
             </DataTemplate.Triggers>
         </DataTemplate>
 
-        <!-- ── State filters: All / Passed / Failed / Aborted ──────────────── -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             4 · TEST MAP CELL – one rounded bar per test, coloured by its state
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             16 high, radius 4, 3 px between cells (1.5 margin each side). The cells share the row equally
+             (UniformGrid), so 50 tests give wide cells and 120 tests give thin ones without any code.
+               queued = Track · running = BlueLight · passed = Green · failed = Red · aborted = Amber
+             Hovering a cell names the test.
+        -->
+        <DataTemplate x:Key="MapCell" DataType="{x:Type local:TestItem}">
+            <Border x:Name="Cell" Height="16" Margin="1.5,0" CornerRadius="4" Background="{StaticResource Track}">
+                <Border.ToolTip>
+                    <TextBlock>
+                        <Run Text="#" /><Run Text="{Binding No, Mode=OneWay}" /><Run Text=" " /><Run Text="{Binding Name, Mode=OneWay}" />
+                    </TextBlock>
+                </Border.ToolTip>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding State}" Value="Running">
+                    <Setter TargetName="Cell" Property="Background" Value="{StaticResource BlueLight}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding State}" Value="Passed">
+                    <Setter TargetName="Cell" Property="Background" Value="{StaticResource Green}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding State}" Value="Failed">
+                    <Setter TargetName="Cell" Property="Background" Value="{StaticResource Red}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding State}" Value="Aborted">
+                    <Setter TargetName="Cell" Property="Background" Value="{StaticResource Amber}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             5 · STATE FILTERS above the test list – All / Passed / Failed / Aborted
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             30 high, 12 px side padding, radius 8, 2 px apart. Checked = LineSoft background.
+        -->
         <Style x:Key="Filter" TargetType="RadioButton">
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
@@ -145,6 +249,7 @@
             </Setter>
         </Style>
 
+        <!-- Filter word: Medium + Muted, SemiBold + black while its radio button is checked. -->
         <Style x:Key="FilterLabel" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="Foreground" Value="{StaticResource Muted}" />
@@ -157,7 +262,7 @@
             </Style.Triggers>
         </Style>
 
-        <!-- Count next to a filter; colour comes in via Tag, 0 always reads faint. -->
+        <!-- Count 6 px behind the word; its colour comes in via Tag, a 0 always reads faint. -->
         <Style x:Key="FilterCount" TargetType="TextBlock">
             <Setter Property="Margin" Value="6,0,0,0" />
             <Setter Property="FontSize" Value="12" />
@@ -171,54 +276,80 @@
             </Style.Triggers>
         </Style>
 
-        <!-- ── One finished test ───────────────────────────────────────────── -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             6 · ONE FINISHED TEST – a 42 px row of the test list
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             Lanes, left to right, 14 px apart, 12 px row padding:
+               number ..... 28 wide, mono 11
+               status ..... 16 × 16 solid disc: green check / red cross / amber dash
+               name ....... fills, 14 px
+               right ...... passed: duration (48 wide, right-aligned) · failed: "Failed" · aborted: the reason
+
+             A failed row is emphasised: red number, SemiBold name; the failure message is the row's tooltip.
+        -->
         <DataTemplate x:Key="TestTemplate" DataType="{x:Type local:TestItem}">
-            <DockPanel Height="42" Margin="12,0">
-                <TextBlock DockPanel.Dock="Left" Width="28" Text="{Binding No}" Style="{StaticResource MonoText}" FontSize="11"
+            <DockPanel x:Name="Row" Height="42" Margin="12,0" Background="Transparent">
+                <TextBlock x:Name="Number" DockPanel.Dock="Left" Width="28" Text="{Binding No}" Style="{StaticResource MonoText}" FontSize="11"
                            Foreground="{StaticResource Subtle}" />
-                <Grid DockPanel.Dock="Left" Width="16" Height="16" Margin="14,0,0,0">
-                    <Border x:Name="StatusBg" CornerRadius="8" Background="{StaticResource GreenSoft}" />
-                    <local:PathIcon x:Name="Check" Data="{StaticResource Geo.Check8}" Box="8" Width="8" Height="8" StrokeThickness="1.5"
-                                    Foreground="{StaticResource Green}" />
-                    <local:PathIcon x:Name="Cross" Data="{StaticResource Geo.Cross8}" Box="8" Width="8" Height="8" StrokeThickness="1.5"
-                                    Foreground="{StaticResource Red}" Visibility="Collapsed" />
-                    <Border x:Name="Dash" Width="7" Height="1.5" CornerRadius="1" Background="{StaticResource Amber}" Visibility="Collapsed" />
-                </Grid>
-                <TextBlock DockPanel.Dock="Right" Width="48" Margin="14,0,0,0" Text="{Binding TimeText}" TextAlignment="Right"
+
+                <Canvas DockPanel.Dock="Left" Width="16" Height="16" Margin="14,0,0,0" VerticalAlignment="Center">
+                    <Ellipse x:Name="Disc" Canvas.Left="1" Canvas.Top="1" Width="14" Height="14" Fill="{StaticResource Green}" />
+                    <Path x:Name="Glyph" Data="M4.9,8.2 L7,10.3 L11.1,6.1" Stroke="White" StrokeThickness="1.7"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                </Canvas>
+
+                <!-- Passed: how long the test took. -->
+                <TextBlock x:Name="Time" DockPanel.Dock="Right" Width="48" Margin="14,0,0,0" Text="{Binding TimeText}" TextAlignment="Right"
                            Style="{StaticResource MonoText}" Foreground="{StaticResource Subtle}" />
-                <TextBlock x:Name="Note" DockPanel.Dock="Right" Margin="14,0,0,0" Text="{Binding Note}" Style="{StaticResource MonoText}"
-                           Visibility="{Binding Note, Converter={StaticResource VisibleWhen}}" />
-                <TextBlock Text="{Binding Name}" Margin="14,0,0,0" FontSize="14" Foreground="{StaticResource Body}" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" />
+                <!-- Failed: the word; aborted: the reason. Hidden for passed tests. -->
+                <TextBlock x:Name="Result" DockPanel.Dock="Right" Margin="14,0,0,0" Style="{StaticResource MonoText}" Visibility="Collapsed" />
+
+                <TextBlock x:Name="Name" Text="{Binding Name}" Margin="14,0,0,0" FontSize="14" Foreground="{StaticResource Body}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </DockPanel>
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding State}" Value="Failed">
-                    <Setter TargetName="StatusBg" Property="Background" Value="{StaticResource RedSoft}" />
-                    <Setter TargetName="Check" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="Cross" Property="Visibility" Value="Visible" />
-                    <Setter TargetName="Note" Property="Foreground" Value="{StaticResource RedText}" />
+                    <Setter TargetName="Disc" Property="Fill" Value="{StaticResource Red}" />
+                    <Setter TargetName="Glyph" Property="Data" Value="M5.7,5.7 L10.3,10.3 M10.3,5.7 L5.7,10.3" />
+                    <Setter TargetName="Number" Property="Foreground" Value="{StaticResource RedText}" />
+                    <Setter TargetName="Name" Property="FontWeight" Value="SemiBold" />
+                    <Setter TargetName="Name" Property="Foreground" Value="{StaticResource Ink}" />
+                    <Setter TargetName="Time" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="Result" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="Result" Property="Text" Value="Failed" />
+                    <Setter TargetName="Result" Property="Foreground" Value="{StaticResource Red}" />
+                    <Setter TargetName="Row" Property="ToolTip" Value="{Binding Note}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding State}" Value="Aborted">
-                    <Setter TargetName="StatusBg" Property="Background" Value="{StaticResource AmberSoft}" />
-                    <Setter TargetName="Check" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="Dash" Property="Visibility" Value="Visible" />
-                    <Setter TargetName="Note" Property="Foreground" Value="{StaticResource AmberText}" />
+                    <Setter TargetName="Disc" Property="Fill" Value="{StaticResource Amber}" />
+                    <Setter TargetName="Glyph" Property="Data" Value="M5.2,8 H10.8" />
+                    <Setter TargetName="Glyph" Property="StrokeThickness" Value="1.8" />
+                    <Setter TargetName="Time" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="Result" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="Result" Property="Text" Value="{Binding Note}" />
+                    <Setter TargetName="Result" Property="Foreground" Value="{StaticResource AmberText}" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
 
-        <!-- ── Log panel ────────────────────────────────────────────────────── -->
-        <Style x:Key="LogTab" TargetType="ListBoxItem">
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             7 · LOG FILTER SEGMENTS – All / Passed / Failed / Aborted in the log header
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             A grey track (LogSegment, radius 9, 2 px padding) holds four 24 px segments with radius 7.
+             The checked one is a white chip with a 1 px soft shadow; the shadow sits on its own layer so the
+             label keeps ClearType.
+        -->
+        <Style x:Key="LogFilter" TargetType="RadioButton">
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Margin" Value="0,0,2,0" />
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
+                    <ControlTemplate TargetType="RadioButton">
                         <Grid>
                             <Border x:Name="Shadow" CornerRadius="7" Background="White" Visibility="Collapsed">
                                 <Border.Effect>
-                                    <DropShadowEffect BlurRadius="3" ShadowDepth="1" Direction="270" Color="#0B0D12" Opacity="0.1" />
+                                    <DropShadowEffect BlurRadius="2" ShadowDepth="1" Direction="270" Color="#0B0D12" Opacity="0.1" />
                                 </Border.Effect>
                             </Border>
                             <Border x:Name="Bd" Height="24" Padding="10,0" CornerRadius="7" Background="Transparent">
@@ -230,11 +361,11 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Text" Property="TextElement.Foreground" Value="{StaticResource Black}" />
                             </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
+                            <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="Shadow" Property="Visibility" Value="Visible" />
                                 <Setter TargetName="Bd" Property="Background" Value="White" />
                                 <Setter TargetName="Text" Property="TextElement.FontWeight" Value="SemiBold" />
-                                <Setter TargetName="Text" Property="TextElement.Foreground" Value="{StaticResource Black}" />
+                                <Setter TargetName="Text" Property="TextElement.Foreground" Value="{StaticResource Ink}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -242,17 +373,45 @@
             </Setter>
         </Style>
 
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             8 · ONE LOG LINE – 24 px high, JetBrains Mono 12
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             Lanes, 12 px apart, 10 px row padding:
+               time ...... 62 wide, Subtle ...................... "00:38.20"
+               node ...... 92 wide, SemiBold, one colour per node  (multi mode only)
+               glyph ..... 12 wide: ✓ passed · ○ started · ✕ failed · – aborted · ! warning · → ← … for the rest
+               message ... fills; the dim tail (duration, payload) follows in Subtle
+
+             Row tints: a failed test = FailRow (pink), a warning = WarnRow (pale amber).
+             The newest line carries a blinking blue cursor while the run is live.
+        -->
         <DataTemplate x:Key="LogTemplate" DataType="{x:Type local:LogLine}">
-            <Border x:Name="Bd" CornerRadius="6" Padding="12,3" TextElement.FontFamily="{StaticResource Mono}" TextElement.FontSize="12">
+            <Border x:Name="Bd" Height="24" Padding="10,0" CornerRadius="6"
+                    TextElement.FontFamily="{StaticResource Mono}" TextElement.FontSize="12">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Left" Text="{Binding Time}" Foreground="{StaticResource Faint}" />
-                    <TextBlock x:Name="KindTag" DockPanel.Dock="Left" Width="40" Margin="14,0,0,0" Text="{Binding Tag}" Foreground="{StaticResource Faint}" />
-                    <StackPanel Orientation="Horizontal" Margin="14,0,0,0">
-                        <TextBlock Text="{Binding NodePrefix}" Foreground="{StaticResource Subtle}"
-                                   Visibility="{Binding DataContext.IsAllLogs, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource VisibleWhen}}" />
-                        <TextBlock x:Name="Message" Foreground="{StaticResource Body}">
-                            <Run Text="{Binding Text, Mode=OneWay}" /><Run Text="{Binding DimText, Mode=OneWay}" Foreground="{StaticResource Subtle}" />
-                        </TextBlock>
+
+                    <TextBlock DockPanel.Dock="Left" Width="62" Text="{Binding Time}" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+
+                    <TextBlock x:Name="NodeName" DockPanel.Dock="Left" Width="92" Margin="12,0,0,0" Text="{Binding NodeName}"
+                               FontWeight="SemiBold" Foreground="{StaticResource Muted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               Visibility="{Binding DataContext.IsAllLogs, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource VisibleWhen}}" />
+
+                    <!-- Glyph lane: exactly one of the three children is visible. -->
+                    <Grid DockPanel.Dock="Left" Width="12" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <!-- → ← … (request, response, waiting) and "!" for warnings -->
+                        <TextBlock x:Name="Sign" Text="{Binding Tag}" Foreground="{StaticResource Subtle}" HorizontalAlignment="Center" />
+                        <!-- ✓ ✕ – drawn in a 10-unit box -->
+                        <Canvas x:Name="Mark" Width="10" Height="10" Visibility="Collapsed">
+                            <Path x:Name="MarkPath" Data="M2,5.3 L4,7.3 L8,3" Stroke="{StaticResource Green}" StrokeThickness="1.5"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                        </Canvas>
+                        <!-- ○ a test started -->
+                        <Ellipse x:Name="Ring" Width="7.8" Height="7.8" Stroke="{StaticResource Blue}" StrokeThickness="1.4" Visibility="Collapsed" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="Message" Text="{Binding Text}" Foreground="{StaticResource Body}" />
+                        <TextBlock x:Name="DimRun" Text="{Binding DimText}" Foreground="{StaticResource Subtle}" />
                         <Border Width="7" Height="14" Margin="6,0,0,0" CornerRadius="1" Background="{StaticResource Blue}" VerticalAlignment="Center"
                                 Visibility="{Binding ShowCursor, Converter={StaticResource VisibleWhen}}">
                             <Border.Triggers>
@@ -270,29 +429,59 @@
                 </DockPanel>
             </Border>
             <DataTemplate.Triggers>
+
+                <!-- Node colour: first node blue, second purple, third amber; further nodes stay Muted. -->
+                <DataTrigger Binding="{Binding Node}" Value="0">
+                    <Setter TargetName="NodeName" Property="Foreground" Value="{StaticResource Blue}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Node}" Value="1">
+                    <Setter TargetName="NodeName" Property="Foreground" Value="{StaticResource Purple}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Node}" Value="2">
+                    <Setter TargetName="NodeName" Property="Foreground" Value="{StaticResource WarnTag}" />
+                </DataTrigger>
+
                 <DataTrigger Binding="{Binding Kind}" Value="Pass">
-                    <Setter TargetName="KindTag" Property="Foreground" Value="{StaticResource Green}" />
-                    <Setter TargetName="KindTag" Property="FontWeight" Value="SemiBold" />
+                    <Setter TargetName="Sign" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Kind}" Value="Run">
-                    <Setter TargetName="KindTag" Property="Foreground" Value="{StaticResource Blue}" />
-                    <Setter TargetName="KindTag" Property="FontWeight" Value="SemiBold" />
+                    <Setter TargetName="Sign" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="Ring" Property="Visibility" Value="Visible" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Kind}" Value="Fail">
-                    <Setter TargetName="KindTag" Property="Foreground" Value="{StaticResource RedText}" />
-                    <Setter TargetName="KindTag" Property="FontWeight" Value="SemiBold" />
-                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource RedSoft}" />
+                    <Setter TargetName="Sign" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="MarkPath" Property="Data" Value="M2.5,2.5 L7.5,7.5 M7.5,2.5 L2.5,7.5" />
+                    <Setter TargetName="MarkPath" Property="Stroke" Value="{StaticResource Red}" />
+                    <Setter TargetName="Message" Property="Foreground" Value="{StaticResource RedText}" />
+                    <Setter TargetName="Message" Property="FontWeight" Value="SemiBold" />
+                    <Setter TargetName="DimRun" Property="Foreground" Value="{StaticResource RedText}" />
+                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource FailRow}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Abort">
+                    <Setter TargetName="Sign" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="MarkPath" Property="Data" Value="M2.5,5 H7.5" />
+                    <Setter TargetName="MarkPath" Property="Stroke" Value="{StaticResource Amber}" />
+                    <Setter TargetName="DimRun" Property="Foreground" Value="{StaticResource AmberText}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding Kind}" Value="Warn">
-                    <Setter TargetName="KindTag" Property="Foreground" Value="{StaticResource WarnTag}" />
-                    <Setter TargetName="KindTag" Property="FontWeight" Value="SemiBold" />
+                    <Setter TargetName="Sign" Property="Text" Value="!" />
+                    <Setter TargetName="Sign" Property="FontWeight" Value="Bold" />
+                    <Setter TargetName="Sign" Property="Foreground" Value="{StaticResource WarnTag}" />
                     <Setter TargetName="Bd" Property="Background" Value="{StaticResource WarnRow}" />
                     <Setter TargetName="Message" Property="Foreground" Value="{StaticResource WarnText}" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
 
-        <!-- ── Run sidebar input row (24 px glyph) ─────────────────────────── -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             9 · SIDEBAR INPUT ROW – 24 px glyph + file name (+ "6 specs" for the test folder)
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             Folder: blue tab (11 × 7) behind a blue body (24 × 17).
+             File: white page 18 × 23 with a hairline, and a small coloured tag (8 × 5) at its bottom-left.
+        -->
         <DataTemplate x:Key="InputTemplate" DataType="{x:Type local:Slot}">
             <DockPanel Margin="4,7">
                 <Grid DockPanel.Dock="Left" Width="24" Height="24">
@@ -321,260 +510,267 @@
         </DataTemplate>
     </UserControl.Resources>
 
+    <!-- ═══════════════════════════════════════════════════════════════════════════════════════════
+         LAYOUT
+         ═══════════════════════════════════════════════════════════════════════════════════════════ -->
     <DockPanel>
 
-        <!-- ══ Sidebar: this run + its inputs ════════════════════════════════ -->
-        <Border DockPanel.Dock="Left" Width="300" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+        <!-- ══ Sidebar: 300 wide, directly on the grey shell (no background, no divider) ═════════════
+             Padding 16 × 18. "THIS RUN" block, 22 px gap, then "INPUTS" with one row per slot. -->
+        <Border DockPanel.Dock="Left" Width="300" Background="Transparent">
             <StackPanel Margin="16,18">
                 <StackPanel Margin="4,0">
                     <TextBlock Text="THIS RUN" Style="{StaticResource SectionLabel}" />
                     <TextBlock Text="{Binding ProjectName}" Margin="0,6,0,0" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding ModeText}" Margin="0,6,0,0" Foreground="{StaticResource Subtle}" />
+                    <TextBlock Text="{Binding ModeText}" Margin="0,6,0,0" Foreground="{StaticResource Muted}" />
                 </StackPanel>
                 <TextBlock Text="INPUTS" Style="{StaticResource SectionLabel}" Margin="4,22,0,8" />
                 <ItemsControl ItemsSource="{Binding Slots}" ItemTemplate="{StaticResource InputTemplate}" Focusable="False" />
             </StackPanel>
         </Border>
 
-        <!-- ══ Page ══════════════════════════════════════════════════════════ -->
-        <Grid Background="{StaticResource Page}">
-            <Grid.RowDefinitions>
-                <RowDefinition />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+        <!-- ══ Sheet: the one white surface ═══════════════════════════════════════════════════════════
+             8 px away from the right and bottom window edge, radius 14, hairline (SheetLine) and a very soft
+             shadow underneath. The shadow is a separate layer so the text on the sheet keeps ClearType. -->
+        <Grid Margin="0,0,8,8">
+            <Border Style="{StaticResource CardShadowSmall}" CornerRadius="14" />
+            <Border Background="White" BorderBrush="{StaticResource SheetLine}" BorderThickness="1" CornerRadius="14"
+                    local:Look.ClipToCorners="True">
 
-            <!-- Test card -->
-            <Grid>
-                <Grid.Style>
-                    <Style TargetType="Grid">
-                        <Setter Property="Margin" Value="40,24" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding LogsOpen}" Value="True">
-                                <Setter Property="Margin" Value="40,24,40,10" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Grid.Style>
-                <Border Style="{StaticResource CardShadow}" CornerRadius="20" />
-                <Border Style="{StaticResource Card}" CornerRadius="20" local:Look.ClipToCorners="True">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition />
-                        </Grid.RowDefinitions>
+                <!-- 6 px inside the sheet on the left, top and right; the log panel runs to the bottom edge. -->
+                <Grid Margin="6,6,6,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" /><!-- 0 · node tabs or single summary -->
+                        <RowDefinition Height="Auto" /><!-- 1 · test map -->
+                        <RowDefinition Height="Auto" /><!-- 2 · toolbar -->
+                        <RowDefinition /><!--              3 · test list (scrolls) -->
+                        <RowDefinition Height="Auto" /><!-- 4 · log panel -->
+                    </Grid.RowDefinitions>
 
-                        <!-- Multi: one tab per node -->
-                        <Border BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1"
-                                Visibility="{Binding IsMulti, Converter={StaticResource VisibleWhen}}">
-                            <ListBox Margin="6,8" ItemsSource="{Binding Nodes}" SelectedItem="{Binding SelectedNode}"
-                                     ItemContainerStyle="{StaticResource NodeTab}" ItemTemplate="{StaticResource NodeTabTemplate}"
-                                     FocusVisualStyle="{x:Null}">
-                                <ListBox.Template>
-                                    <ControlTemplate TargetType="ListBox">
-                                        <ItemsPresenter />
-                                    </ControlTemplate>
-                                </ListBox.Template>
-                                <ListBox.ItemsPanel>
+                    <!-- ── Row 0 (multi): one tab per node ─────────────────────────────────────────────
+                         8 px padding around the pills, hairline below. The pills share the width equally. -->
+                    <Border BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1"
+                            Visibility="{Binding IsMulti, Converter={StaticResource VisibleWhen}}">
+                        <ListBox Margin="6,8" ItemsSource="{Binding Nodes}" SelectedItem="{Binding SelectedNode}"
+                                 ItemContainerStyle="{StaticResource NodeTab}" ItemTemplate="{StaticResource NodeTabTemplate}"
+                                 FocusVisualStyle="{x:Null}">
+                            <ListBox.Template>
+                                <ControlTemplate TargetType="ListBox">
+                                    <ItemsPresenter />
+                                </ControlTemplate>
+                            </ListBox.Template>
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Rows="1" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                        </ListBox>
+                    </Border>
+
+                    <!-- ── Row 0 (single): icon · name · runtime · count · failed · aborted ……… right text ──
+                         Below it a 3 px progress bar. Shown instead of the tabs when there is one node. -->
+                    <Border Padding="20,16,20,14" BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1"
+                            Visibility="{Binding IsMulti, Converter={StaticResource CollapsedWhen}}">
+                        <StackPanel>
+                            <DockPanel>
+                                <ContentControl DockPanel.Dock="Left" Content="{Binding SelectedNode}" ContentTemplate="{StaticResource NodeIcon}"
+                                                Focusable="False" VerticalAlignment="Center"
+                                                Foreground="{StaticResource Blue}" Tag="{StaticResource White}" />
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding HeaderRightText}" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
+                                    <TextBlock Text="{Binding SelectedNode.Name}" FontSize="15" FontWeight="Bold" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding SelectedNode.Runtime}" Margin="10,0,0,0" Foreground="{StaticResource Subtle}" VerticalAlignment="Center"
+                                               Visibility="{Binding SelectedNode.Runtime, Converter={StaticResource VisibleWhen}}" />
+                                    <Ellipse Width="3" Height="3" Margin="10,0,0,0" Fill="{StaticResource Dot}" />
+                                    <TextBlock Margin="10,0,0,0" Foreground="{StaticResource Muted}" VerticalAlignment="Center">
+                                        <Run Text="{Binding HeaderCount, Mode=OneWay}" Foreground="{StaticResource Ink}" FontWeight="SemiBold" /><Run Text="{Binding HeaderCountRest, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding SelectedNode.Failed, StringFormat={}{0} failed}" Margin="14,0,0,0" FontWeight="SemiBold"
+                                               Foreground="{StaticResource RedText}" VerticalAlignment="Center"
+                                               Visibility="{Binding SelectedNode.HasFailed, Converter={StaticResource VisibleWhen}}" />
+                                    <TextBlock Text="{Binding SelectedNode.Aborted, StringFormat={}{0} aborted}" Margin="10,0,0,0" FontWeight="SemiBold"
+                                               Foreground="{StaticResource AmberText}" VerticalAlignment="Center"
+                                               Visibility="{Binding SelectedNode.HasAborted, Converter={StaticResource VisibleWhen}}" />
+                                </StackPanel>
+                            </DockPanel>
+                            <ContentControl Content="{Binding SelectedNode}" ContentTemplate="{StaticResource ProgressBar}" Height="3" Margin="0,12,0,0"
+                                            Focusable="False" Tag="{StaticResource Track}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── Row 1: test map ──────────────────────────────────────────────────────────────
+                         48 high, 20 px side padding, hairline below.
+                           left ..... "24 of 50 done"   mono 12, the number in Ink SemiBold
+                           middle ... one cell per test of the selected node, 14 px away from both texts
+                           right .... "26 left · ~0:52" mono 12, the number in Ink SemiBold -->
+                    <Border Grid.Row="1" Height="48" Padding="20,0" BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource MonoText}" Foreground="{StaticResource Muted}">
+                                <Run Text="{Binding SelectedNode.Done, Mode=OneWay}" Foreground="{StaticResource Ink}" FontWeight="SemiBold" /><Run Text=" of " /><Run Text="{Binding SelectedNode.Total, Mode=OneWay}" /><Run Text=" done" />
+                            </TextBlock>
+                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource MonoText}" Foreground="{StaticResource Muted}">
+                                <Run Text="{Binding SelectedNode.Rest, Mode=OneWay}" Foreground="{StaticResource Ink}" FontWeight="SemiBold" /><Run Text=" left" /><Run Text="{Binding MapEtaText, Mode=OneWay}" />
+                            </TextBlock>
+                            <!-- 14 px gap minus the 1.5 px half-gap every cell brings along. -->
+                            <ItemsControl Margin="12.5,0" ItemsSource="{Binding MapTests}" ItemTemplate="{StaticResource MapCell}"
+                                          Focusable="False" VerticalAlignment="Center">
+                                <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <UniformGrid Rows="1" />
                                     </ItemsPanelTemplate>
-                                </ListBox.ItemsPanel>
-                            </ListBox>
-                        </Border>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                        </DockPanel>
+                    </Border>
 
-                        <!-- Single: summary line + bar -->
-                        <Border Padding="20,16,20,14" BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1"
-                                Visibility="{Binding IsMulti, Converter={StaticResource CollapsedWhen}}">
-                            <StackPanel>
-                                <DockPanel>
-                                    <Viewbox DockPanel.Dock="Left" Width="16" Height="16">
-                                        <ContentControl Content="{Binding SelectedNode}" ContentTemplate="{StaticResource NodeIcon}" Focusable="False"
-                                                        Foreground="{StaticResource Blue}" Tag="{StaticResource White}" />
-                                    </Viewbox>
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding HeaderRightText}" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
-                                    <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
-                                        <TextBlock Text="{Binding SelectedNode.Name}" FontSize="15" FontWeight="Bold" VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding SelectedNode.Runtime}" Margin="10,0,0,0" Foreground="{StaticResource Subtle}" VerticalAlignment="Center"
-                                                   Visibility="{Binding SelectedNode.Runtime, Converter={StaticResource VisibleWhen}}" />
-                                        <Ellipse Width="3" Height="3" Margin="10,0,0,0" Fill="{StaticResource Dot}" />
-                                        <TextBlock Margin="10,0,0,0" Foreground="{StaticResource Muted}" VerticalAlignment="Center">
-                                            <Run Text="{Binding HeaderCount, Mode=OneWay}" Foreground="{StaticResource Ink}" FontWeight="SemiBold" /><Run Text="{Binding HeaderCountRest, Mode=OneWay}" />
-                                        </TextBlock>
-                                        <TextBlock Text="{Binding SelectedNode.Failed, StringFormat={}{0} failed}" Margin="14,0,0,0" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource RedText}" VerticalAlignment="Center"
-                                                   Visibility="{Binding SelectedNode.HasFailed, Converter={StaticResource VisibleWhen}}" />
-                                        <TextBlock Text="{Binding SelectedNode.Aborted, StringFormat={}{0} aborted}" Margin="10,0,0,0" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource AmberText}" VerticalAlignment="Center"
-                                                   Visibility="{Binding SelectedNode.HasAborted, Converter={StaticResource VisibleWhen}}" />
+                    <!-- ── Row 2: toolbar ───────────────────────────────────────────────────────────────
+                         Padding 16 × 14, hairline below.
+                           left .... All 24 · Passed 22 · Failed 1 · Aborted 1
+                           right ... "Stop Payments" (multi, while that node runs); after the run a short status text -->
+                    <Border Grid.Row="2" Padding="16,14" BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <!-- "Stopped · 12 not run" / "All 50 tests ran". While running the test map already says how many are left. -->
+                                <TextBlock Text="{Binding QueueText}" FontSize="12" Foreground="{StaticResource Subtle}" VerticalAlignment="Center"
+                                           Visibility="{Binding IsRunning, Converter={StaticResource CollapsedWhen}}" />
+                                <Button Style="{StaticResource Btn.DangerOutline}" Height="28" Margin="12,0,0,0" Click="OnStopSelected"
+                                        Visibility="{Binding CanStopSelected, Converter={StaticResource VisibleWhen}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Width="7" Height="7" CornerRadius="2" Background="{StaticResource RedText}" />
+                                        <TextBlock Text="{Binding StopSelectedText}" Margin="6,0,0,0" />
                                     </StackPanel>
+                                </Button>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Style="{StaticResource Filter}"
+                                             IsChecked="{Binding StateFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.All}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="All" Style="{StaticResource FilterLabel}" />
+                                        <TextBlock Text="{Binding SelectedNode.Done}" Style="{StaticResource FilterCount}" Tag="{StaticResource Subtle}" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton Style="{StaticResource Filter}"
+                                             IsChecked="{Binding StateFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.Passed}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Passed" Style="{StaticResource FilterLabel}" />
+                                        <TextBlock Text="{Binding SelectedNode.Passed}" Style="{StaticResource FilterCount}" Tag="{StaticResource Faint}" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton Style="{StaticResource Filter}"
+                                             IsChecked="{Binding StateFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.Failed}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Failed" Style="{StaticResource FilterLabel}" />
+                                        <TextBlock Text="{Binding SelectedNode.Failed}" Style="{StaticResource FilterCount}" Tag="{StaticResource RedText}" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton Style="{StaticResource Filter}"
+                                             IsChecked="{Binding StateFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.Aborted}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Aborted" Style="{StaticResource FilterLabel}" />
+                                        <TextBlock Text="{Binding SelectedNode.Aborted}" Style="{StaticResource FilterCount}" Tag="{StaticResource AmberText}" />
+                                    </StackPanel>
+                                </RadioButton>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- ── Row 3: test list, newest first ───────────────────────────────────────────────
+                         6 px padding around the rows.
+                           running row ... 46 high, radius 12, BlueSoft: number · spinner · name (SemiBold) · "Running"
+                           finished rows . TestTemplate (42 high)
+                           footer ........ "Show 19 earlier tests", aligned with the test names (54 px from the left) -->
+                    <ScrollViewer x:Name="TestScroll" Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="6">
+                            <Border Height="46" Padding="12,0" CornerRadius="12" Background="{StaticResource BlueSoft}"
+                                    Visibility="{Binding RunningTest, Converter={StaticResource VisibleWhen}}">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Left" Width="28" Text="{Binding RunningTest.No}" Style="{StaticResource MonoText}" FontSize="11"
+                                               Foreground="{StaticResource Blue}" />
+                                    <Control DockPanel.Dock="Left" Margin="14,0,0,0" Template="{StaticResource Spinner}" Focusable="False" VerticalAlignment="Center" />
+                                    <TextBlock DockPanel.Dock="Right" Text="Running" Margin="14,0,0,0" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource Blue}" VerticalAlignment="Center"
+                                               ToolTip="{Binding SelectedNode.RunningForText}" />
+                                    <TextBlock Text="{Binding RunningTest.Name}" Margin="14,0,0,0" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
                                 </DockPanel>
-                                <ContentControl Content="{Binding SelectedNode}" ContentTemplate="{StaticResource ProgressBar}" Height="3" Margin="0,12,0,0"
-                                                Focusable="False" Tag="{StaticResource Track}" />
-                            </StackPanel>
-                        </Border>
+                            </Border>
 
-                        <!-- Filters + queue info -->
-                        <Border Grid.Row="1" Padding="16,14" BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1">
-                            <DockPanel>
-                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                    <TextBlock Text="{Binding QueueText}" FontSize="12" Foreground="{StaticResource Subtle}" VerticalAlignment="Center" />
-                                    <Button Style="{StaticResource Btn.DangerOutline}" Height="28" Margin="12,0,0,0" Click="OnStopSelected"
-                                            Visibility="{Binding CanStopSelected, Converter={StaticResource VisibleWhen}}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <Border Width="7" Height="7" CornerRadius="2" Background="{StaticResource RedText}" />
-                                            <TextBlock Text="{Binding StopSelectedText}" Margin="6,0,0,0" />
-                                        </StackPanel>
-                                    </Button>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <RadioButton Style="{StaticResource Filter}"
-                                                 IsChecked="{Binding StateFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.All}}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="All" Style="{StaticResource FilterLabel}" />
-                                            <TextBlock Text="{Binding SelectedNode.Done}" Style="{StaticResource FilterCount}" Tag="{StaticResource Subtle}" />
-                                        </StackPanel>
-                                    </RadioButton>
-                                    <RadioButton Style="{StaticResource Filter}"
-                                                 IsChecked="{Binding StateFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.Passed}}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="Passed" Style="{StaticResource FilterLabel}" />
-                                            <TextBlock Text="{Binding SelectedNode.Passed}" Style="{StaticResource FilterCount}" Tag="{StaticResource Faint}" />
-                                        </StackPanel>
-                                    </RadioButton>
-                                    <RadioButton Style="{StaticResource Filter}"
-                                                 IsChecked="{Binding StateFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.Failed}}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="Failed" Style="{StaticResource FilterLabel}" />
-                                            <TextBlock Text="{Binding SelectedNode.Failed}" Style="{StaticResource FilterCount}" Tag="{StaticResource RedText}" />
-                                        </StackPanel>
-                                    </RadioButton>
-                                    <RadioButton Style="{StaticResource Filter}"
-                                                 IsChecked="{Binding StateFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.Aborted}}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="Aborted" Style="{StaticResource FilterLabel}" />
-                                            <TextBlock Text="{Binding SelectedNode.Aborted}" Style="{StaticResource FilterCount}" Tag="{StaticResource AmberText}" />
-                                        </StackPanel>
-                                    </RadioButton>
-                                </StackPanel>
-                            </DockPanel>
-                        </Border>
+                            <ItemsControl ItemsSource="{Binding VisibleTests}" ItemTemplate="{StaticResource TestTemplate}" Focusable="False" />
 
-                        <!-- Tests, newest first -->
-                        <ScrollViewer x:Name="TestScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Margin="6">
-                                <Border Height="46" Padding="12,0" CornerRadius="12" Background="{StaticResource BlueSoft}"
-                                        Visibility="{Binding RunningTest, Converter={StaticResource VisibleWhen}}">
-                                    <DockPanel>
-                                        <TextBlock DockPanel.Dock="Left" Width="28" Text="{Binding RunningTest.No}" Style="{StaticResource MonoText}" FontSize="11"
-                                                   Foreground="{StaticResource Blue}" />
-                                        <Control DockPanel.Dock="Left" Margin="14,0,0,0" Template="{StaticResource Spinner}" Focusable="False" VerticalAlignment="Center" />
-                                        <TextBlock DockPanel.Dock="Right" Width="48" Margin="14,0,0,0" Text="{Binding SelectedNode.RunningForText}" TextAlignment="Right"
-                                                   Style="{StaticResource MonoText}" Foreground="{StaticResource Blue}" />
-                                        <TextBlock DockPanel.Dock="Right" Text="Running" Margin="14,0,0,0" FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource Blue}" VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding RunningTest.Name}" Margin="14,0,0,0" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" />
-                                    </DockPanel>
-                                </Border>
+                            <Button Style="{StaticResource Btn.LinkMuted}" Content="{Binding ShowMoreText}" Height="40" Margin="54,0,0,0"
+                                    HorizontalAlignment="Left" FontWeight="Normal" Click="OnShowMore"
+                                    Visibility="{Binding HasMore, Converter={StaticResource VisibleWhen}}" />
+                            <TextBlock Text="{Binding EmptyText}" Margin="54,12" Foreground="{StaticResource Subtle}"
+                                       Visibility="{Binding EmptyText, Converter={StaticResource VisibleWhen}}" />
+                        </StackPanel>
+                    </ScrollViewer>
 
-                                <ItemsControl ItemsSource="{Binding VisibleTests}" ItemTemplate="{StaticResource TestTemplate}" Focusable="False" />
+                    <!-- ── Row 4: log panel (Ctrl+L) ────────────────────────────────────────────────────
+                         272 high, grey (LogPanel), top corners radius 12, 8 px side padding, runs to the sheet's bottom edge.
+                           header (46) ... terminal icon · "Logs" …… search box · filter segments · search · close
+                           well .......... white, top corners radius 10, hairline; 6 px side and 8 px top padding; scrolls -->
+                    <Border Grid.Row="4" Height="272" Padding="8,0" CornerRadius="12,12,0,0" Background="{StaticResource LogPanel}"
+                            Visibility="{Binding LogsOpen, Converter={StaticResource VisibleWhen}}">
+                        <DockPanel>
 
-                                <Button Style="{StaticResource Btn.LinkMuted}" Content="{Binding ShowMoreText}" Height="40" Margin="54,0,0,0"
-                                        HorizontalAlignment="Left" FontWeight="Normal" Click="OnShowMore"
-                                        Visibility="{Binding HasMore, Converter={StaticResource VisibleWhen}}" />
-                                <TextBlock Text="{Binding EmptyText}" Margin="54,12" Foreground="{StaticResource Subtle}"
-                                           Visibility="{Binding EmptyText, Converter={StaticResource VisibleWhen}}" />
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Grid>
-                </Border>
-            </Grid>
+                            <!-- Header: 46 high, 8 px side padding, items 10 px apart. -->
+                            <DockPanel DockPanel.Dock="Top" Height="46" Margin="8,0">
+                                <local:PathIcon DockPanel.Dock="Left" Data="{StaticResource Geo.Terminal}" Width="15" Height="15" Foreground="{StaticResource Ink}" />
+                                <TextBlock DockPanel.Dock="Left" Text="Logs" Margin="10,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center" />
 
-            <!-- Log panel (screen 4) -->
-            <Grid Grid.Row="1" Height="290" Margin="40,0" Visibility="{Binding LogsOpen, Converter={StaticResource VisibleWhen}}">
-                <Border Style="{StaticResource CardShadowUp}" CornerRadius="18,18,0,0" />
-                <Border Background="White" BorderBrush="#0F0B0D12" BorderThickness="1,1,1,0" CornerRadius="18,18,0,0" local:Look.ClipToCorners="True">
-                    <DockPanel>
-                        <Border DockPanel.Dock="Top" Width="36" Height="4" Margin="0,8,0,0" CornerRadius="2" Background="{StaticResource TrackDark}" />
-
-                        <Border DockPanel.Dock="Top" Padding="20,8,14,12" BorderBrush="{StaticResource LineSoft}" BorderThickness="0,0,0,1">
-                            <DockPanel>
-                                <local:PathIcon DockPanel.Dock="Left" Data="{StaticResource Geo.Terminal}" Foreground="{StaticResource Ink}" />
-                                <TextBlock DockPanel.Dock="Left" Text="Logs" Margin="8,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <Border DockPanel.Dock="Left" Margin="12,0,0,0" Padding="3" CornerRadius="9" Background="{StaticResource Chip}"
-                                        Visibility="{Binding IsMulti, Converter={StaticResource VisibleWhen}}">
-                                    <ListBox ItemsSource="{Binding LogTabs}" SelectedIndex="{Binding LogTab}" ItemContainerStyle="{StaticResource LogTab}"
-                                             FocusVisualStyle="{x:Null}">
-                                        <ListBox.Template>
-                                            <ControlTemplate TargetType="ListBox">
-                                                <ItemsPresenter />
-                                            </ControlTemplate>
-                                        </ListBox.Template>
-                                        <ListBox.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Orientation="Horizontal" />
-                                            </ItemsPanelTemplate>
-                                        </ListBox.ItemsPanel>
-                                    </ListBox>
-                                </Border>
-
-                                <Button DockPanel.Dock="Right" Style="{StaticResource Btn.Ghost}" Margin="12,0,0,0" ToolTip="Close (Ctrl+L)" Click="OnCloseLogs">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource Btn.Ghost}" Margin="2,0,-6,0" ToolTip="Close (Ctrl+L)" Click="OnCloseLogs">
                                     <local:PathIcon Data="{StaticResource Geo.Close}" Width="12" Height="12" StrokeThickness="1.4" />
                                 </Button>
-                                <Button DockPanel.Dock="Right" Style="{StaticResource Btn.Ghost}" Margin="12,0,0,0" ToolTip="Copy" Click="OnCopyLog">
-                                    <local:PathIcon Data="{StaticResource Geo.Copy}" Width="13" Height="13" />
+                                <Button DockPanel.Dock="Right" Style="{StaticResource Btn.Ghost}" Margin="4,0,0,0" ToolTip="Search the log" Click="OnToggleSearch">
+                                    <local:PathIcon Data="{StaticResource Geo.Search}" Width="15" Height="15" />
                                 </Button>
-                                <Border DockPanel.Dock="Right" Height="26" Padding="10,0" CornerRadius="13">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="{StaticResource BlueChip}" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsRunning}" Value="False">
-                                                    <Setter Property="Background" Value="{StaticResource Chip}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
+
+                                <!-- All / Passed / Failed / Aborted: keeps only the lines that report such a result. -->
+                                <Border DockPanel.Dock="Right" Padding="2,2,0,2" CornerRadius="9" Background="{StaticResource LogSegment}" VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal">
-                                        <Ellipse Width="6" Height="6">
-                                            <Ellipse.Style>
-                                                <Style TargetType="Ellipse">
-                                                    <Setter Property="Fill" Value="{StaticResource Blue}" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsRunning}" Value="False">
-                                                            <Setter Property="Fill" Value="{StaticResource Faint}" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Ellipse.Style>
-                                        </Ellipse>
-                                        <TextBlock Margin="6,0,0,0" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Text" Value="Live" />
-                                                    <Setter Property="Foreground" Value="{StaticResource Blue}" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsRunning}" Value="False">
-                                                            <Setter Property="Text" Value="Done" />
-                                                            <Setter Property="Foreground" Value="{StaticResource Subtle}" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
+                                        <RadioButton Style="{StaticResource LogFilter}" Content="All"
+                                                     IsChecked="{Binding LogFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.All}}" />
+                                        <RadioButton Style="{StaticResource LogFilter}" Content="Passed"
+                                                     IsChecked="{Binding LogFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.Passed}}" />
+                                        <RadioButton Style="{StaticResource LogFilter}" Content="Failed"
+                                                     IsChecked="{Binding LogFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.Failed}}" />
+                                        <RadioButton Style="{StaticResource LogFilter}" Content="Aborted"
+                                                     IsChecked="{Binding LogFilter, Converter={StaticResource Equals}, ConverterParameter={x:Static local:TestFilter.Aborted}}" />
                                     </StackPanel>
                                 </Border>
-                                <Border />
-                            </DockPanel>
-                        </Border>
 
-                        <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <ItemsControl Margin="8" ItemsSource="{Binding VisibleLog}" ItemTemplate="{StaticResource LogTemplate}" Focusable="False" />
-                        </ScrollViewer>
-                    </DockPanel>
-                </Border>
-            </Grid>
+                                <!-- Search box: hidden until the magnifier is clicked (RunView.xaml.cs), Esc closes it. -->
+                                <Border x:Name="SearchField" DockPanel.Dock="Right" Width="180" Height="28" Margin="0,0,10,0" CornerRadius="8"
+                                        Background="White" BorderBrush="{StaticResource LogWellLine}" BorderThickness="1" Visibility="Collapsed">
+                                    <TextBox x:Name="SearchBox" Text="{Binding LogSearch, UpdateSourceTrigger=PropertyChanged}"
+                                             Margin="8,0" BorderThickness="0" Background="Transparent" VerticalContentAlignment="Center"
+                                             FontSize="12" Foreground="{StaticResource Ink}" CaretBrush="{StaticResource Blue}"
+                                             PreviewKeyDown="OnSearchKeyDown" />
+                                </Border>
+
+                                <Border /><!-- takes the free space between "Logs" and the controls on the right -->
+                            </DockPanel>
+
+                            <!-- Well -->
+                            <Border CornerRadius="10,10,0,0" Background="White" BorderBrush="{StaticResource LogWellLine}" BorderThickness="1,1,1,0"
+                                    local:Look.ClipToCorners="True">
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Copy log" Click="OnCopyLog" />
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <Grid>
+                                    <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl Margin="6,8,6,6" ItemsSource="{Binding VisibleLog}" ItemTemplate="{StaticResource LogTemplate}" Focusable="False" />
+                                    </ScrollViewer>
+                                    <TextBlock Text="No lines match." Margin="16,14" Foreground="{StaticResource Subtle}"
+                                               Visibility="{Binding NoLogMatches, Converter={StaticResource VisibleWhen}}" />
+                                </Grid>
+                            </Border>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </Border>
         </Grid>
     </DockPanel>
 </UserControl>

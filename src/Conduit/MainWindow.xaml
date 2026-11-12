@@ -1,8 +1,21 @@
 <!--
-    Conduit main window: the top bar shared by all screens, plus the two screen groups from the Paper file:
-      SetupView – 1 Setup empty, 2 Setup filled
-      RunView   – 3/4 Running multi (± logs), 5 Running single, 6 Finished single
+    MainWindow – the grey shell around every screen (Paper "9c · Running" / "11b · Setup": grey shell, white sheet).
+
+    ┌──────────────────────────────────────────────────────────────────────────────────────────┐
+    │ ■ Conduit  /  Run #1042                      ● 0:47   [>_]   ■ Stop all      –    □    ✕  │  top bar, 56 high
+    ├───────────────────────────┬──────────────────────────────────────────────────────────────┤
+    │ sidebar (on the shell)    │  white sheet                                                 │  SetupView / RunView
+    └───────────────────────────┴──────────────────────────────────────────────────────────────┘
+
+    What this file owns:
+      · the window frame ....... WindowChrome removes the native title bar; the top bar below is the title bar.
+                                 It can be dragged, double-clicked to maximise, and keeps the resize borders.
+      · the top bar ............ logo + breadcrumb on the left; status + actions on the right; then – □ ✕
+      · the two screen groups .. SetupView (screens 1–2) and RunView (screens 3–6), switched by Workspace.Screen
+      · the busy overlay ....... dims the screens while a call to X is running
     Screen 7 (Windows taskbar progress) lives in TaskbarItemInfo below + MainWindow.xaml.cs.
+
+    Sidebar and sheet are drawn by the views themselves, because the sidebar content differs per screen.
 -->
 <Window x:Class="Conduit.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -18,9 +31,19 @@
         WindowStartupLocation="CenterScreen"
         Icon="{StaticResource LogoImage}"
         FontFamily="{StaticResource Sans}" FontSize="13"
-        Foreground="{StaticResource Black}" Background="White"
+        Foreground="{StaticResource Black}" Background="{StaticResource Shell}"
         UseLayoutRounding="True"
         PreviewKeyDown="OnPreviewKeyDown">
+
+    <!--
+        Custom title bar. CaptionHeight = height of the top bar, so the whole bar drags the window.
+        Anything clickable inside it must set WindowChrome.IsHitTestVisibleInChrome="True" (done on the panels below),
+        otherwise the click would start a drag. GlassFrameThickness keeps the native window shadow.
+    -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="56" ResizeBorderThickness="6" GlassFrameThickness="0,0,0,1" CornerRadius="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
 
     <Window.TaskbarItemInfo>
         <TaskbarItemInfo>
@@ -72,28 +95,119 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!--
+            Window buttons (minimise, maximise / restore, close): 46 wide, as high as the top bar, 10 px glyph with a
+            1 px stroke in the button's Foreground. Hover = a faint dark veil; the close button turns Windows-red.
+        -->
+        <Style x:Key="Btn.Caption" TargetType="Button">
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Foreground" Value="{StaticResource Ink}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#140B0D12" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#240B0D12" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="Btn.Caption.Close" TargetType="Button" BasedOn="{StaticResource Btn.Caption}">
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#E81123" />
+                    <Setter Property="Foreground" Value="White" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#C50F1F" />
+                    <Setter Property="Foreground" Value="White" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
+
+    <!--
+        A maximised window with WindowChrome hangs 7 px over every screen edge; this padding pulls the content back in.
+        (7 = resize border of a standard window at 100 % scaling.)
+    -->
+    <Border>
+        <Border.Style>
+            <Style TargetType="Border">
+                <Setter Property="Padding" Value="0" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
+                        <Setter Property="Padding" Value="7" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
 
     <DockPanel>
 
-        <!-- ══ Top bar ═══════════════════════════════════════════════════════ -->
-        <Border DockPanel.Dock="Top" Height="56" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
-            <Border.Style>
-                <Style TargetType="Border">
-                    <Setter Property="Padding" Value="20,0" />
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsRun}" Value="True">
-                            <Setter Property="Padding" Value="20,0,16,0" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </Border.Style>
+        <!-- ══ Top bar ═══════════════════════════════════════════════════════════════════════════════
+             56 high, on the shell (no background, no divider). 20 px from the left edge; the window buttons
+             touch the right edge. Order from the right: ✕ □ – · 8 px · actions (14 px apart) · status. -->
+        <Border DockPanel.Dock="Top" Height="56" Padding="20,0,0,0">
 
             <DockPanel LastChildFill="False">
 
-                <!-- Logo · Conduit / New run -->
+                <!-- ── Window buttons ─────────────────────────────────────────────────────────────── -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button Style="{StaticResource Btn.Caption}" ToolTip="Minimise" Click="OnMinimize">
+                        <Path Data="M0,5 H10" Width="10" Height="10" StrokeThickness="1"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                    <Button Click="OnMaximizeRestore">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource Btn.Caption}">
+                                <Setter Property="ToolTip" Value="Maximise" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
+                                        <Setter Property="ToolTip" Value="Restore" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <Path Width="10" Height="10" StrokeThickness="1"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
+                            <Path.Style>
+                                <Style TargetType="Path">
+                                    <!-- one rounded square -->
+                                    <Setter Property="Data" Value="M2,0.5 H8 A1.5,1.5 0 0 1 9.5,2 V8 A1.5,1.5 0 0 1 8,9.5 H2 A1.5,1.5 0 0 1 0.5,8 V2 A1.5,1.5 0 0 1 2,0.5 Z" />
+                                    <Style.Triggers>
+                                        <!-- maximised: two overlapping squares -->
+                                        <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
+                                            <Setter Property="Data" Value="M0.5,2.5 H7.5 V9.5 H0.5 Z M2.5,2.5 V0.5 H9.5 V7.5 H7.5" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Path.Style>
+                        </Path>
+                    </Button>
+                    <Button Style="{StaticResource Btn.Caption.Close}" ToolTip="Close" Click="OnCloseWindow">
+                        <Path Data="M0.5,0.5 L9.5,9.5 M9.5,0.5 L0.5,9.5" Width="10" Height="10" StrokeThickness="1"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                </StackPanel>
+
+                <!-- ── Logo · Conduit / New run ───────────────────────────────────────────────────────
+                     Logo 22 × 22 (radius 6, blue 8 px dot), "Conduit" 15 Bold 10 px to its right, then "/" and the
+                     breadcrumb 14 px apart. Only the logo button is clickable; the texts drag the window. -->
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                    <Button Padding="0" Click="OnBrandClick">
+                    <Button Padding="0" Click="OnBrandClick" WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource Btn}">
                                 <Setter Property="Cursor" Value="Arrow" />
@@ -120,8 +234,8 @@
                     <TextBlock Text="{Binding Crumb}" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </StackPanel>
 
-                <!-- Setup: status + Run pipelines -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                <!-- ── Setup: "5 files missing" / "Ready · 160 tests" + Run pipelines (34 high) ───────── -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True"
                             Visibility="{Binding IsSetup, Converter={StaticResource VisibleWhen}}">
                     <Grid VerticalAlignment="Center">
                         <TextBlock Text="{Binding MissingText}" Foreground="{StaticResource Muted}"
@@ -139,8 +253,9 @@
                     </Button>
                 </StackPanel>
 
-                <!-- Running / Finished: timer · terminal · Stop  |  terminal · Export to X ▾ -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                <!-- ── Running: timer pill · logs toggle · Stop   |   Finished: logs toggle · Export to X ▾ ──
+                     All 30 high (Export 32) and 14 px apart. -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True"
                             Visibility="{Binding IsRun, Converter={StaticResource VisibleWhen}}">
                     <Border Height="30" CornerRadius="15" Padding="12,0" Margin="0,0,14,0" Background="{StaticResource Chip}"
                             Visibility="{Binding IsRunning, Converter={StaticResource VisibleWhen}}">
@@ -196,7 +311,8 @@
             </DockPanel>
         </Border>
 
-        <!-- ══ Screens ═══════════════════════════════════════════════════════ -->
+        <!-- ══ Screens ═══════════════════════════════════════════════════════════════════════════════
+             Both views draw their own sidebar (on the shell) and their own white sheet. -->
         <Grid>
             <local:SetupView x:Name="Setup" Visibility="{Binding IsSetup, Converter={StaticResource VisibleWhen}}" />
             <local:RunView Visibility="{Binding IsRun, Converter={StaticResource VisibleWhen}}" />
@@ -204,7 +320,7 @@
             <!-- Busy: the page dims softly and the logo loader builds up in the middle. Faded in and out by MainWindow.xaml.cs:
                  in when the call to X takes noticeably long, out only once the loader reports that the logo has landed. -->
             <Grid x:Name="BusyOverlay" Visibility="Collapsed" Opacity="0">
-                <Border Background="{StaticResource Page}" Opacity="0.82" />
+                <Border Background="{StaticResource Shell}" Opacity="0.82" />
                 <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,40">
                     <Border Style="{StaticResource CardShadow}" CornerRadius="100" />
                     <ll:PixelLogoLoader x:Name="Loader" LogoSize="48" Resolution="12"
@@ -214,4 +330,5 @@
             </Grid>
         </Grid>
     </DockPanel>
+    </Border>
 </Window>

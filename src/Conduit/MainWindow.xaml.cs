@@ -66,9 +66,10 @@ public partial class MainWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        // Windows 11: white title bar + hairline border, so the native chrome blends into the white top bar.
+        // Windows 11: shell-grey title bar + hairline border. The title bar itself is drawn by MainWindow.xaml
+        // (WindowChrome), this only colours the thin native frame around it.
         var hwnd = new WindowInteropHelper(this).Handle;
-        int caption = 0x00FFFFFF, border = 0x00ECE8E6; // COLORREF = 0x00BBGGRR
+        int caption = 0x00EBE7E6, border = 0x00DAD6D5; // COLORREF = 0x00BBGGRR
         _ = DwmSetWindowAttribute(hwnd, 35, ref caption, sizeof(int));
         _ = DwmSetWindowAttribute(hwnd, 34, ref border, sizeof(int));
 
@@ -96,6 +97,18 @@ public partial class MainWindow : Window
 
     private static DoubleAnimation Fade(double to, double seconds) =>
         new(to, TimeSpan.FromSeconds(seconds)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
+
+    // ── Window buttons in the top bar (the native ones are replaced by WindowChrome) ──
+
+    private void OnMinimize(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+
+    private void OnMaximizeRestore(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized) SystemCommands.RestoreWindow(this);
+        else SystemCommands.MaximizeWindow(this);
+    }
+
+    private void OnCloseWindow(object sender, RoutedEventArgs e) => SystemCommands.CloseWindow(this);
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {

@@ -41,6 +41,15 @@
         <SolidColorBrush x:Key="TrackDark" Color="#DADDE2" />
         <SolidColorBrush x:Key="White" Color="#FFFFFF" />
 
+        <!-- Shell + sheet (Paper 9c / 11b): the window itself is one flat grey, the content sits on a single white sheet. -->
+        <SolidColorBrush x:Key="Shell" Color="#E6E7EB" />
+        <SolidColorBrush x:Key="SheetLine" Color="#140B0D12" />
+        <!-- Log panel inside the sheet: grey panel, darker segmented filter track, white well, pink row of a failed test. -->
+        <SolidColorBrush x:Key="LogPanel" Color="#F1F2F5" />
+        <SolidColorBrush x:Key="LogSegment" Color="#E4E6EA" />
+        <SolidColorBrush x:Key="LogWellLine" Color="#120B0D12" />
+        <SolidColorBrush x:Key="FailRow" Color="#FDF1F1" />
+
         <SolidColorBrush x:Key="Green" Color="#12A150" />
         <SolidColorBrush x:Key="GreenSoft" Color="#E4F5EB" />
         <SolidColorBrush x:Key="Red" Color="#E5383B" />

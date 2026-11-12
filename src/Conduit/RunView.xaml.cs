@@ -7,7 +7,7 @@ using System.Windows.Threading;
 namespace Conduit;
 
 /// <summary>
-/// Screens 3–6. Code-behind only forwards clicks and keeps the scroll positions sensible:
+/// Screens 3–6 (Paper "9c · Running — logs, light well"). Code-behind only forwards clicks and keeps the scroll positions sensible:
 /// the log follows new lines while you're at its end, the test list jumps to the top when you switch node or filter.
 /// </summary>
 public partial class RunView : UserControl
@@ -63,4 +63,22 @@ public partial class RunView : UserControl
     }
 
     private void OnCloseLogs(object sender, RoutedEventArgs e) => _ws?.ToggleLogs();
+
+    /// <summary>Magnifier in the log header: opens the search box and focuses it; a second click closes and clears it.</summary>
+    private void OnToggleSearch(object sender, RoutedEventArgs e)
+    {
+        bool open = SearchField.Visibility != Visibility.Visible;
+        SearchField.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        if (open) SearchBox.Focus();
+        else if (_ws is not null) _ws.LogSearch = "";
+    }
+
+    /// <summary>Esc inside the search box closes it again.</summary>
+    private void OnSearchKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Escape) return;
+        SearchField.Visibility = Visibility.Collapsed;
+        if (_ws is not null) _ws.LogSearch = "";
+        e.Handled = true;
+    }
 }

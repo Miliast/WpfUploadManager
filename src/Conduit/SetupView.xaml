@@ -1,6 +1,33 @@
 <!--
-    Screens 1 + 2 (Setup): project sidebar (empty → file tree) and the five input fields + "Get data from X".
-    Files can be dragged from the tree or from Explorer onto a field or anywhere on the page.
+    SetupView – screens 1 + 2 (Setup), built from the Paper artboard "1c · Setup — mode switch, 6 fields".
+
+    ┌───────────────────────────── MainWindow top bar (56) ─────────────────────────────┐
+    │ Sidebar (300, on the grey shell)  │  Sheet (white, radius 14, inset 8 right/bottom) │
+    │                                   │                                                 │
+    │  empty:  PROJECT                  │   Set up the run.        ( Single | ▣ Multiple ) │  heading 36 Bold + mode switch
+    │          skeleton tree            │   Add the six files below, or drop them …       │  subtitle 14, Muted
+    │          "Open your project"      │  ╭─────────────────────────────────────────────╮ │
+    │          [ Open folder  Ctrl+O ]  │  │ ▢ Test folder        Specs for …  [Add folder]│ │  fields card: hairline, radius 16,
+    │          Try a sample project     │  │ ▢ Project manifest   package.json [Add file] │ │  6 px padding, one 68 px row per field
+    │                                   │  │ ▢ Source file …                              │ │
+    │  filled: project name · n files   │  │ ▢ Container …                                │ │
+    │          [ Filter files        ]  │  │ ▢ Pipeline config …                          │ │
+    │          file tree (scrolls)      │  │ ▢ Requirements …       (multiple tests only) │ │
+    │          ───────────────────────  │  ╰─────────────────────────────────────────────╯ │
+    │          [ ✦ Auto-fill 2 fields ] │  ╭ ☁ Get data from X ………………………… [ ⭳ Get X data ] ╮ │  second card, 16 below
+    │          ⭱ Drag files from here … │  ╰─────────────────────────────────────────────╯ │
+    │                                   │   ⓘ Tip: open the whole project folder …        │  pinned to the bottom (screen 1)
+    └───────────────────────────────────┴─────────────────────────────────────────────────┘
+
+    Page content: 72 px from the sheet's left and right edge, 40 from the top, at most 960 wide.
+
+    Where things live:
+      · colours, fonts, buttons .................. App.xaml
+      · the mode switch (pill with icons) ........ ModeSwitch.xaml (+ .cs for its motion)
+      · fields, project tree, auto-fill, X data .. Workspace.cs
+      · dialogs, drag & drop, auto-fill glow ..... SetupView.xaml.cs, GlowSweep.xaml
+
+    Files can be dragged from the tree or from Explorer onto a field or anywhere on the sheet.
 -->
 <UserControl x:Class="Conduit.SetupView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -21,7 +48,19 @@
             <Setter Property="Margin" Value="6,0,0,0" />
         </Style>
 
-        <!-- ── Sidebar tree row (screen 2) ─────────────────────────────────── -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             1 · SIDEBAR TREE ROW (screen 2) – one file or folder of the open project
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             28 high, radius 6, 8 px side padding, 1 px between rows. Lanes, left to right:
+               indent ..... 16 px per level (TreeRow.Indent)
+               chevron .... 10 px, only for folders (› closed, ⌄ open); files keep the empty slot so names align
+               glyph ...... 14 px, 6 px after the chevron: folder (grey) · test folder (blue, filled) ·
+                            spec file (purple flask) · Dockerfile (blue) · any other file (green page)
+               name ....... fills, 8 px after the glyph; folders Medium, the test folder SemiBold
+               note ....... right-aligned, 11 px: the field this file is used for ("Test folder"), or for folders
+                            the number of entries (mono)
+             Hover = Chip background. Folders toggle on click; files can be dragged onto a field.
+        -->
         <DataTemplate x:Key="TreeRowTemplate" DataType="{x:Type local:TreeRow}">
             <Border x:Name="Row" Height="28" CornerRadius="6" Padding="8,0" Margin="0,0,0,1"
                     MouseLeftButtonDown="OnTreeRowDown" MouseMove="OnTreeRowMove" MouseLeftButtonUp="OnTreeRowUp">
@@ -85,11 +124,32 @@
             </DataTemplate.Triggers>
         </DataTemplate>
 
-        <!-- ── One input field (40 px glyph · title/subtitle · Add / Replace) ── -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             2 · ONE INPUT FIELD – a 68 px row of the fields card
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             A 1 px divider sits above every row but the first (72 px from the left, 16 from the right, so it
+             starts under the title, not under the glyph).
+
+             Lanes inside the row (16 px side padding):
+               glyph ...... 40 × 40
+                              folder field ... blue gradient folder with a soft blue shadow; dashed outline while empty
+                              file field ..... white page 30 × 38 with two grey text lines and a coloured type tag
+                                               (JSON, TS, DOCKER, YML, TXT) at its bottom-left; dashed outline and a
+                                               grey tag while empty
+               text ....... 16 px after the glyph: title 14 SemiBold, subtitle 13 Subtle 2 px below
+                              empty  → field name + hint            ("Source file" / ".ts, .tsx or .js")
+                              filled → file name + what it is        ("index.ts" / "Source file · src/ · 106 B")
+               action ..... right-aligned
+                              empty  → chip button 96 × 30           ("Add folder" / "Add file")
+                              filled → quiet text link               ("Replace")
+
+             While a file is dragged over the row: BlueSoft background, 1.5 px blue outline, blue title
+             ("Drop to replace ci.yml"), action hidden.
+        -->
         <DataTemplate x:Key="FieldTemplate" DataType="{x:Type local:Slot}">
             <StackPanel>
                 <Border x:Name="Divider" Height="1" Margin="72,0,16,0" Background="{StaticResource LineSoft}" />
-                <Border x:Name="Row" Height="68" CornerRadius="14" Padding="16,0" BorderThickness="1.5" BorderBrush="Transparent"
+                <Border x:Name="Row" Height="68" CornerRadius="10" Padding="16,0" BorderThickness="1.5" BorderBrush="Transparent"
                         Background="Transparent" AllowDrop="True"
                         DragOver="OnFieldDragOver" DragLeave="OnFieldDragLeave" Drop="OnFieldDrop">
                     <DockPanel>
@@ -185,7 +245,11 @@
             </DataTemplate.Triggers>
         </DataTemplate>
 
-        <!-- Virtualised, pixel-scrolling list (the project tree can have thousands of rows). -->
+        <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+             3 · VIRTUALISED LIST – host of the project tree
+             ═══════════════════════════════════════════════════════════════════════════════════════
+             Only the rows in view exist as controls and they are recycled while scrolling, so a project with
+             thousands of files stays fluid. Scrolls by pixel, not by row. -->
         <Style x:Key="VirtualList" TargetType="ItemsControl">
             <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
             <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
@@ -214,12 +278,17 @@
     <Grid>
         <DockPanel>
 
-            <!-- ══ Sidebar ═══════════════════════════════════════════════════ -->
-            <Border DockPanel.Dock="Left" Width="300" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0"
+            <!-- ══ Sidebar: 300 wide, directly on the grey shell ═════════════════════════════════════════
+                 No own background (transparent, so it still takes drops) and no divider.
+                 Two states: empty (screen 1) and the project's file tree (screen 2). -->
+            <Border DockPanel.Dock="Left" Width="300" Background="Transparent"
                     AllowDrop="True" DragOver="OnSidebarDragOver" Drop="OnSidebarDrop">
                 <Grid>
 
-                    <!-- Screen 1: no project yet. -->
+                    <!-- ── Screen 1: no project yet ───────────────────────────────────────────────────────
+                         "PROJECT" label top-left (20 / 22). Centred block, lifted 40 px above the middle:
+                         skeleton tree (150 wide) · title 14 SemiBold · two-line hint (max 230 wide, Muted) ·
+                         dark "Open folder" button (36 high) with its shortcut chip · blue "Try a sample project" link. -->
                     <Grid Visibility="{Binding HasProject, Converter={StaticResource CollapsedWhen}}">
                         <TextBlock Text="PROJECT" Style="{StaticResource SectionLabel}" Margin="20,22,0,0"
                                    HorizontalAlignment="Left" VerticalAlignment="Top" />
@@ -268,7 +337,12 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- Screen 2: the project's files. -->
+                    <!-- ── Screen 2: the project's files ──────────────────────────────────────────────────
+                         top ...... folder icon · project name 14 Bold · "42 files" mono 11 · "Replace" link;
+                                    10 below: filter box (30 high, white, radius 8, blue ring while focused)
+                         middle ... the tree (fills, scrolls)
+                         bottom ... hairline, then the auto-fill button (only when the tree has matches for
+                                    empty fields) and the drag hint -->
                     <DockPanel Visibility="{Binding HasProject, Converter={StaticResource VisibleWhen}}">
                         <StackPanel DockPanel.Dock="Top" Margin="16,16,16,12">
                             <DockPanel>
@@ -347,8 +421,14 @@
                 </Grid>
             </Border>
 
-            <!-- ══ Page ══════════════════════════════════════════════════════ -->
-            <Grid Background="{StaticResource Page}" AllowDrop="True" DragOver="OnPageDragOver" Drop="OnPageDrop">
+            <!-- ══ Sheet: the one white surface ═══════════════════════════════════════════════════════════
+                 8 px from the right and bottom window edge, radius 14, hairline (SheetLine) and a very soft shadow
+                 on its own layer underneath. Dropping files anywhere on it fills the matching fields. -->
+            <Grid Margin="0,0,8,8">
+            <Border Style="{StaticResource CardShadowSmall}" CornerRadius="14" />
+            <Border Background="White" BorderBrush="{StaticResource SheetLine}" BorderThickness="1" CornerRadius="14"
+                    local:Look.ClipToCorners="True">
+            <Grid Background="Transparent" AllowDrop="True" DragOver="OnPageDragOver" Drop="OnPageDrop">
                 <Grid.RowDefinitions>
                     <RowDefinition />
                     <RowDefinition Height="Auto" />
@@ -357,30 +437,15 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="72,40,72,24" MaxWidth="960">
 
-                        <!-- Heading + "5 / 5 files" counter -->
+                        <!-- ── Heading row ──────────────────────────────────────────────────────────────────
+                             left .... "Set up the run." 36 Bold; 6 below: subtitle 14 Muted (changes once all fields are filled)
+                             right ... the mode switch, bottom-aligned with the subtitle, at least 24 px from the text.
+                                       Switching it changes the number of fields (five / six) and whether the run
+                                       uses one node or several in parallel. -->
                         <DockPanel>
-                            <StackPanel DockPanel.Dock="Right" Margin="24,0,0,2" VerticalAlignment="Bottom">
-                                <TextBlock HorizontalAlignment="Right" FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{StaticResource Muted}">
-                                    <Run Text="{Binding FilledCount, Mode=OneWay}" Foreground="{StaticResource Ink}" FontWeight="SemiBold" /><Run Text=" / 5 files" />
-                                </TextBlock>
-                                <ItemsControl ItemsSource="{Binding Slots}" Margin="-2,8,-2,0" HorizontalAlignment="Right" Focusable="False">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Orientation="Horizontal" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type local:Slot}">
-                                            <Border x:Name="Segment" Width="28" Height="4" Margin="2,0" CornerRadius="2" Background="{StaticResource Line}" />
-                                            <DataTemplate.Triggers>
-                                                <DataTrigger Binding="{Binding IsFilled}" Value="True">
-                                                    <Setter TargetName="Segment" Property="Background" Value="{StaticResource Blue}" />
-                                                </DataTrigger>
-                                            </DataTemplate.Triggers>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
+                            <local:ModeSwitch DockPanel.Dock="Right" Margin="24,0,0,0" VerticalAlignment="Bottom"
+                                              FirstText="Single test" SecondText="Multiple tests"
+                                              SelectedIndex="{Binding Mode}" />
                             <StackPanel>
                                 <TextBlock Text="Set up the run." FontSize="36" FontWeight="Bold" />
                                 <TextBlock Text="{Binding SetupSubtitle}" Margin="0,6,0,0" FontSize="14" Foreground="{StaticResource Muted}"
@@ -388,18 +453,21 @@
                             </StackPanel>
                         </DockPanel>
 
-                        <!-- The five fields -->
-                        <Grid Margin="0,20,0,0">
-                            <Border Style="{StaticResource CardShadow}" CornerRadius="20" />
-                            <Border Style="{StaticResource Card}" CornerRadius="20" Padding="6">
-                                <ItemsControl x:Name="Fields" ItemsSource="{Binding Slots}" ItemTemplate="{StaticResource FieldTemplate}" Focusable="False" />
-                            </Border>
-                        </Grid>
+                        <!-- ── Fields card ──────────────────────────────────────────────────────────────────
+                             20 below the heading. On the white sheet it needs no shadow: just a hairline, radius 16,
+                             6 px padding. One row per field of the current mode (FieldTemplate). -->
+                        <Border Margin="0,20,0,0" Background="White" BorderBrush="#170B0D12" BorderThickness="1" CornerRadius="16" Padding="6">
+                            <ItemsControl x:Name="Fields" ItemsSource="{Binding Slots}" ItemTemplate="{StaticResource FieldTemplate}" Focusable="False" />
+                        </Border>
 
-                        <!-- Get data from X -->
+                        <!-- ── "Get data from X" card ───────────────────────────────────────────────────────
+                             16 below the fields. Same hairline card, 22 × 14 padding (68 high).
+                               tile ..... 40 × 40, radius 10, pale blue, cloud icon; green check badge once loaded
+                               text ..... 16 px after the tile: title 14 SemiBold, subtitle 13 Subtle
+                               button ... before loading: dark "Get X data" with a download icon (32 high)
+                                          after loading:  outlined "Get X data" with a refresh icon -->
                         <Grid Margin="0,16,0,0">
-                            <Border Style="{StaticResource CardShadowSmall}" CornerRadius="16" />
-                            <Border Style="{StaticResource Card}" CornerRadius="16" Padding="22,14">
+                            <Border Background="White" BorderBrush="#170B0D12" BorderThickness="1" CornerRadius="16" Padding="22,14">
                                 <DockPanel>
                                     <Grid DockPanel.Dock="Left" Width="40" Height="40">
                                         <Border CornerRadius="10" Background="{StaticResource BlueTile}">
@@ -441,7 +509,8 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Screen 1 tip, pinned to the bottom of the page. -->
+                <!-- ── Tip (screen 1 only) ───────────────────────────────────────────────────────────────
+                     Pinned 40 px above the sheet's bottom edge, aligned with the cards; info icon + 13 px Muted text. -->
                 <Border Grid.Row="1" Margin="72,0,72,40" MaxWidth="960" Visibility="{Binding ShowTip, Converter={StaticResource VisibleWhen}}">
                     <StackPanel Orientation="Horizontal">
                         <local:PathIcon Data="{StaticResource Geo.Info}" Foreground="{StaticResource Subtle}" StrokeThickness="1.2" />
@@ -449,6 +518,8 @@
                                    Margin="8,0,0,0" Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
                     </StackPanel>
                 </Border>
+            </Grid>
+            </Border>
             </Grid>
         </DockPanel>
 

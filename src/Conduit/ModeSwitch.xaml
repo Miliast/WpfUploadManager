@@ -1,12 +1,39 @@
 <!--
-    ModeSwitch – the two-option pill above the fields card (Paper: "Mode switch", artboards 1b / 1c).
-    Look lives here, motion in ModeSwitch.xaml.cs:
-      · the white thumb slides to the chosen side and stretches a little on the way (its front edge leaves first),
-      · the labels cross-fade between muted and black,
-      · a wide, faint aurora wash breathes once across the whole track – full size from the first frame, only its
-        opacity moves, so nothing bursts out of a point.
+    ModeSwitch – the two-option pill above the fields card
+    (Paper "13 · Mode switch — icon on the active side", used on "1c · Setup — mode switch, 6 fields").
 
-    Use:  <local:ModeSwitch FirstText="Node" SecondText="Python" SelectedIndex="{Binding Mode}" />
+        ╭──────────────────────────────────────────────╮
+        │ ╭───────────────────╮                        │   track  34 high, radius 17, #E8EAED, 3 px padding
+        │ │ ▣  Single test    │    Multiple tests      │   thumb  28 high, radius 14, white, soft 1 px shadow
+        │ ╰───────────────────╯                        │   label  13 px SemiBold: black when chosen, Muted otherwise
+        ╰──────────────────────────────────────────────╯
+
+    Anatomy, back to front (the Grid at the bottom of this file):
+      1. Track ......... the grey pill.
+      2. Wash .......... a very faint violet → pink → orange gradient across the whole track. It is invisible at rest
+                         and breathes once (opacity only) whenever the selection changes.
+      3. Thumb ......... ONE white pill shared by both options. The code-behind moves its left and right edge
+                         separately, so it stretches a little on the way and settles on the chosen segment.
+      4. Segments ...... two RadioButtons side by side; each is just an icon slot + a label on a transparent pill.
+
+    One segment, left to right (style "Segment"):
+      padding 14 ……… icon slot ……… label ……… padding 16
+        · icon slot: closed (width 0) on the side that is not chosen; opens to 25 (page) or 35 (fan of three)
+          over about a third of a second, and fades in. That width already contains the 7 px gap to the label.
+        · the segment grows with the slot, and the thumb follows it frame by frame (ModeSwitch.xaml.cs).
+
+    The two icons (both 18 high, solid, drawn here as vector paths – no image files):
+      · first option  ("Single")  one page: blue gradient, pale folded corner, two white text lines
+      · second option ("Multi")   the same page in front with a white rim, two paler pages behind it that fan out
+                                  by 20° and 2.5 px to each side when the option is chosen
+      Which icon a segment carries is decided by its Tag ("Single" / "Multi") further down.
+
+    Motion lives in ModeSwitch.xaml.cs; everything visual is in this file. Nothing here bursts out of a point:
+    the pages are full size from the first frame and only turn, the wash only changes opacity.
+
+    Keyboard: Tab focuses the switch once, Left / Right change the side. The focus ring follows the pill shape.
+
+    Use:  <local:ModeSwitch FirstText="Single test" SecondText="Multiple tests" SelectedIndex="{Binding Mode}" />
 -->
 <UserControl x:Class="Conduit.ModeSwitch"
              x:ClassModifier="internal"
@@ -20,6 +47,12 @@
              UseLayoutRounding="True">
 
     <UserControl.Resources>
+
+        <!-- Fill of the page icons: a light-to-brand blue, top to bottom. -->
+        <LinearGradientBrush x:Key="PageFill" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#5C7FFF" Offset="0" />
+            <GradientStop Color="#1F4BFF" Offset="1" />
+        </LinearGradientBrush>
 
         <!-- Keyboard focus ring: follows the segment's pill shape. -->
         <Style x:Key="SegmentFocus">
@@ -39,15 +72,65 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Hit" Height="28" Padding="16,0" CornerRadius="14" Background="Transparent">
-                            <TextBlock x:Name="Label"
-                                       Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"
-                                       FontFamily="{StaticResource Sans}" FontSize="13" FontWeight="SemiBold"
-                                       VerticalAlignment="Center">
-                                <TextBlock.Foreground>
-                                    <SolidColorBrush Color="#5B6270" /><!-- Muted -->
-                                </TextBlock.Foreground>
-                            </TextBlock>
+                        <Border x:Name="Hit" Height="28" Padding="14,0,16,0" CornerRadius="14" Background="Transparent">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+
+                                <!-- Icon slot: closed (Width 0) on the side that is not chosen. Tag picks the glyph. -->
+                                <Border x:Name="IconSlot" Width="0" Height="18" Opacity="0" ClipToBounds="True"
+                                        VerticalAlignment="Center">
+                                    <Grid HorizontalAlignment="Left" VerticalAlignment="Center">
+
+                                        <!-- Single: one solid page – blue gradient, pale folded corner, two white text lines. -->
+                                        <Canvas x:Name="SingleGlyph" Width="18" Height="18">
+                                            <Path Data="M6,1.5 H10.6 L14.5,5.4 V14 A2.5,2.5 0 0 1 12,16.5 H6 A2.5,2.5 0 0 1 3.5,14 V4 A2.5,2.5 0 0 1 6,1.5 Z"
+                                                  Fill="{StaticResource PageFill}" />
+                                            <Path Data="M10.6,1.5 V3.9 A1.5,1.5 0 0 0 12.1,5.4 H14.5 Z" Fill="#C4D0FF" />
+                                            <Path Data="M6.6,9.4 H11.4 M6.6,12.4 H9.6" Stroke="White" StrokeThickness="1.5"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                        </Canvas>
+
+                                        <!--
+                                            Multi: the same page in front, with a white rim, and two paler pages behind it.
+                                            The two behind start hidden under the front page and fan out to the sides.
+                                        -->
+                                        <Canvas x:Name="MultiGlyph" Width="28" Height="18" Visibility="Collapsed">
+                                            <Rectangle x:Name="FanLeft" Canvas.Left="9" Canvas.Top="3" Width="10" Height="13.5"
+                                                       RadiusX="2.5" RadiusY="2.5" Fill="#B9C7FF">
+                                                <Rectangle.RenderTransform>
+                                                    <TransformGroup>
+                                                        <RotateTransform CenterX="5" CenterY="13.5" Angle="0" />
+                                                        <TranslateTransform X="0" />
+                                                    </TransformGroup>
+                                                </Rectangle.RenderTransform>
+                                            </Rectangle>
+                                            <Rectangle x:Name="FanRight" Canvas.Left="9" Canvas.Top="3" Width="10" Height="13.5"
+                                                       RadiusX="2.5" RadiusY="2.5" Fill="#8FA6FF">
+                                                <Rectangle.RenderTransform>
+                                                    <TransformGroup>
+                                                        <RotateTransform CenterX="5" CenterY="13.5" Angle="0" />
+                                                        <TranslateTransform X="0" />
+                                                    </TransformGroup>
+                                                </Rectangle.RenderTransform>
+                                            </Rectangle>
+                                            <Path Data="M11.5,1.6 H15.1 L19,5.5 V14 A2.5,2.5 0 0 1 16.5,16.5 H11.5 A2.5,2.5 0 0 1 9,14 V4.1 A2.5,2.5 0 0 1 11.5,1.6 Z"
+                                                  Fill="{StaticResource PageFill}" Stroke="White" StrokeThickness="1.3"
+                                                  StrokeLineJoin="Round" />
+                                            <Path Data="M15.1,1.9 V4 A1.5,1.5 0 0 0 16.6,5.5 H18.7 Z" Fill="#C4D0FF" />
+                                            <Path Data="M11.9,9.4 H16.1 M11.9,12.3 H14.5" Stroke="White" StrokeThickness="1.5"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                        </Canvas>
+                                    </Grid>
+                                </Border>
+
+                                <TextBlock x:Name="Label"
+                                           Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"
+                                           FontFamily="{StaticResource Sans}" FontSize="13" FontWeight="SemiBold"
+                                           VerticalAlignment="Center">
+                                    <TextBlock.Foreground>
+                                        <SolidColorBrush Color="#5B6270" /><!-- Muted -->
+                                    </TextBlock.Foreground>
+                                </TextBlock>
+                            </StackPanel>
                         </Border>
                         <ControlTemplate.Triggers>
 
@@ -80,6 +163,148 @@
                                     </BeginStoryboard>
                                 </Trigger.ExitActions>
                             </Trigger>
+
+                            <!-- Which glyph this segment carries. -->
+                            <Trigger Property="Tag" Value="Multi">
+                                <Setter TargetName="SingleGlyph" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="MultiGlyph" Property="Visibility" Value="Visible" />
+                            </Trigger>
+
+                            <!-- Icon slot for the "Single" side: opens when chosen, closes when not. -->
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsChecked" Value="True" />
+                                    <Condition Property="Tag" Value="Single" />
+                                </MultiTrigger.Conditions>
+                                <MultiTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="IconSlot" Storyboard.TargetProperty="Width"
+                                                             To="25" Duration="0:0:0.34">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="IconSlot" Storyboard.TargetProperty="Opacity"
+                                                             To="1" Duration="0:0:0.3" BeginTime="0:0:0.08">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiTrigger.EnterActions>
+                                <MultiTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="IconSlot" Storyboard.TargetProperty="Width"
+                                                             To="0" Duration="0:0:0.3">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="IconSlot" Storyboard.TargetProperty="Opacity"
+                                                             To="0" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiTrigger.ExitActions>
+                            </MultiTrigger>
+
+                            <!-- Icon slot for the "Multi" side: opens when chosen, closes when not. -->
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsChecked" Value="True" />
+                                    <Condition Property="Tag" Value="Multi" />
+                                </MultiTrigger.Conditions>
+                                <MultiTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="IconSlot" Storyboard.TargetProperty="Width"
+                                                             To="35" Duration="0:0:0.34">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="IconSlot" Storyboard.TargetProperty="Opacity"
+                                                             To="1" Duration="0:0:0.3" BeginTime="0:0:0.08">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="FanLeft" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(RotateTransform.Angle)"
+                                                             To="-20" Duration="0:0:0.46" BeginTime="0:0:0.1">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="FanLeft" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.X)"
+                                                             To="-2.5" Duration="0:0:0.46" BeginTime="0:0:0.1">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="FanRight" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(RotateTransform.Angle)"
+                                                             To="20" Duration="0:0:0.46" BeginTime="0:0:0.1">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="FanRight" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.X)"
+                                                             To="2.5" Duration="0:0:0.46" BeginTime="0:0:0.1">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiTrigger.EnterActions>
+                                <MultiTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="IconSlot" Storyboard.TargetProperty="Width"
+                                                             To="0" Duration="0:0:0.3">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="IconSlot" Storyboard.TargetProperty="Opacity"
+                                                             To="0" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="FanLeft" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(RotateTransform.Angle)"
+                                                             To="0" Duration="0:0:0.24">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="FanLeft" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.X)"
+                                                             To="0" Duration="0:0:0.24">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="FanRight" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(RotateTransform.Angle)"
+                                                             To="0" Duration="0:0:0.24">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="FanRight" Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.X)"
+                                                             To="0" Duration="0:0:0.24">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseInOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </MultiTrigger.ExitActions>
+                            </MultiTrigger>
 
                             <!-- Hover on the side that is not selected: a barely-there darker pill. -->
                             <MultiTrigger>
@@ -134,10 +359,10 @@
         <StackPanel Orientation="Horizontal" Margin="3"
                     KeyboardNavigation.TabNavigation="Once"
                     KeyboardNavigation.DirectionalNavigation="None">
-            <RadioButton x:Name="First" Style="{StaticResource Segment}"
+            <RadioButton x:Name="First" Style="{StaticResource Segment}" Tag="Single"
                          Content="{Binding FirstText, ElementName=Root}"
                          Checked="OnSegmentChecked" SizeChanged="OnSegmentSizeChanged" />
-            <RadioButton x:Name="Second" Style="{StaticResource Segment}"
+            <RadioButton x:Name="Second" Style="{StaticResource Segment}" Tag="Multi"
                          Content="{Binding SecondText, ElementName=Root}"
                          Checked="OnSegmentChecked" SizeChanged="OnSegmentSizeChanged" />
         </StackPanel>

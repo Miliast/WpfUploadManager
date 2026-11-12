@@ -96,14 +96,16 @@ public sealed class Workspace : Observable
 
     public Workspace()
     {
-        Slots =
+        _allSlots =
         [
             new(0, "Test folder", "Specs for all nodes", "", "#1F4BFF", isFolder: true),
             new(1, "Project manifest", "package.json", "JSON", "#E3A008", isFolder: false),
             new(2, "Source file", ".ts, .tsx or .js", "TS", "#3178C6", isFolder: false),
             new(3, "Container", "Dockerfile", "DOCKER", "#0B8FD1", isFolder: false),
             new(4, "Pipeline config", ".yml or .yaml", "YML", "#7C5CDB", isFolder: false),
+            new(5, "Requirements", "requirements.txt", "TXT", "#6B7280", isFolder: false), // multiple tests only
         ];
+        Slots = _allSlots;
         _timer.Tick += (_, _) => Tick();
     }
 
@@ -185,7 +187,34 @@ public sealed class Workspace : Observable
     private int _xState, _matchCount, _plannedTests; // X: 0 none, 1 fetching, 2 loaded
     private DateTime _xLoadedAt;
 
-    public IReadOnlyList<Slot> Slots { get; }
+    private readonly Slot[] _allSlots;
+    private int _mode = 1;
+
+    /// <summary>The fields of the current mode: five for a single test, six (plus "Requirements") for multiple tests.</summary>
+    public IReadOnlyList<Slot> Slots { get; private set; }
+
+    /// <summary>
+    /// The mode switch above the fields: 0 = single test (one node, five fields), 1 = multiple tests (nodes in parallel, six fields).
+    /// </summary>
+    public int Mode
+    {
+        get => _mode;
+        set
+        {
+            value = value == 1 ? 1 : 0;
+            if (_mode == value) return;
+            ApplyMode(value);
+            SetupChanged();
+        }
+    }
+
+    private void ApplyMode(int mode)
+    {
+        _mode = mode;
+        _sampleSingle = mode == 0;
+        if (mode == 0) _allSlots[5].Fill(null, ""); // the sixth field does not exist in single mode
+        Slots = mode == 1 ? _allSlots : _allSlots[..5];
+    }
     public IReadOnlyList<TreeRow> TreeRows { get; private set; } = [];
     public string? ProjectName { get; private set; }
     public bool HasProject => ProjectName is not null;
@@ -208,7 +237,7 @@ public sealed class Workspace : Observable
 
     public string SetupSubtitle => IsReady
         ? "Everything is in place. Swap any file by dropping a new one on it."
-        : "Add the five files below, or drop them anywhere on this page.";
+        : $"Add the {(Slots.Count == 6 ? "six" : "five")} files below, or drop them anywhere on this page.";
 
     // Auto-fill (sidebar button): puts every matching file of the project into its empty field.
     public bool IsFilling
@@ -270,7 +299,7 @@ public sealed class Workspace : Observable
     {
         _projectRoot = null;
         ProjectName = "acme-storefront";
-        _sampleSingle = single;
+        ApplyMode(single ? 0 : 1);
         _tree.Clear();
         void Add(string rel, long size = -1) => _tree.Add(new Entry(rel, size < 0, Math.Max(size, 0))); // no size = folder
         Add("tests");
@@ -289,6 +318,7 @@ public sealed class Workspace : Observable
         Add(".github/workflows/release.yml", 640);
         Add("Dockerfile", 240);
         Add("package.json", 264);
+        Add("requirements.txt", 96);
         Add("README.md", 2048);
         Add("tsconfig.json", 310);
         IndexTree();
@@ -351,6 +381,11 @@ public sealed class Workspace : Observable
         }
         var yml = _tree.FirstOrDefault(t => !t.IsDir && t.Rel.StartsWith(".github/workflows/", StringComparison.OrdinalIgnoreCase) && SlotFor(t.Rel, false) == 4);
         if (yml.Rel is not null) found[4] = yml;
+        if (found.Length > 5)
+        {
+            var req = _tree.FirstOrDefault(t => !t.IsDir && FileName(t.Rel).Equals("requirements.txt", StringComparison.OrdinalIgnoreCase));
+            if (req.Rel is not null) found[5] = req;
+        }
 
         var result = new List<(int, FileItem)>();
         for (int i = 0; i < found.Length; i++)
@@ -376,12 +411,13 @@ public sealed class Workspace : Observable
 
     public string? ProjectRoot => _projectRoot;
 
-    /// <summary>Which field a file belongs to: 0 test folder, 1 package.json, 2 source, 3 Dockerfile, 4 yml; -1 none.</summary>
+    /// <summary>Which field a file belongs to: 0 test folder, 1 package.json, 2 source, 3 Dockerfile, 4 yml, 5 requirements.txt; -1 none.</summary>
     public static int SlotFor(string name, bool isDir)
     {
         if (isDir) return 0;
         name = FileName(name);
         if (name.Equals("package.json", StringComparison.OrdinalIgnoreCase)) return 1;
+        if (name.Equals("requirements.txt", StringComparison.OrdinalIgnoreCase)) return 5;
         if (name.StartsWith("Dockerfile", StringComparison.OrdinalIgnoreCase)) return 3;
         if (HasExtension(name, ".yml", ".yaml")) return 4;
         if (HasExtension(name, ".ts", ".tsx", ".js")) return 2;
@@ -487,7 +523,8 @@ public sealed class Workspace : Observable
 
     private readonly List<LogLine> _log = [];
     private PipelineNode? _selectedNode;
-    private TestFilter _stateFilter;
+    private TestFilter _stateFilter, _logFilter;
+    private string _logSearch = "";
     private bool _showAll, _logsOpen;
     private int _runNo = 1041, _logTab, _exportState, _version = -1, _doneCount;
     private DateTime _startedAt;
@@ -521,7 +558,7 @@ public sealed class Workspace : Observable
             if (value is null || !Set(ref _selectedNode, value)) return;
             _stateFilter = TestFilter.All;
             _showAll = false;
-            Raise(nameof(StateFilter), nameof(ShowAll));
+            Raise(nameof(StateFilter), nameof(ShowAll), nameof(MapTests));
             RefreshList();
         }
     }
@@ -541,6 +578,20 @@ public sealed class Workspace : Observable
     {
         get => _showAll;
         set { if (Set(ref _showAll, value)) RefreshList(); }
+    }
+
+    /// <summary>Every test of the selected node in run order – one cell each in the test map under the node tabs.</summary>
+    public IReadOnlyList<TestItem> MapTests => SelectedNode?.Tests ?? [];
+
+    /// <summary>" · ~0:52" behind "26 left" in the test map; empty until the first test finished and once the node is done.</summary>
+    public string MapEtaText
+    {
+        get
+        {
+            if (!IsRunning || SelectedNode is not { Finished: false, Done: > 0 } n) return "";
+            var left = TimeSpan.FromSeconds(_elapsed.TotalSeconds / n.Done * (n.Total - n.Done));
+            return $" · ~{Fmt.Clock(left)}";
+        }
     }
 
     /// <summary>The highlighted "Running" row on top of the list (only in the All filter).</summary>
@@ -577,8 +628,25 @@ public sealed class Workspace : Observable
         }
     }
 
-    /// <summary>The "All" tab: every line gets its node name in front.</summary>
-    public bool IsAllLogs => IsMulti && _logTab == Nodes.Count;
+    /// <summary>The log is one merged stream of all nodes; in multi mode every line carries its node name.</summary>
+    public bool IsAllLogs => IsMulti;
+
+    /// <summary>All / Passed / Failed / Aborted above the log: keeps only the lines that report such a result.</summary>
+    public TestFilter LogFilter
+    {
+        get => _logFilter;
+        set { if (Set(ref _logFilter, value)) RebuildLog(); }
+    }
+
+    /// <summary>Text typed into the log search box; lines must contain it (case-insensitive).</summary>
+    public string LogSearch
+    {
+        get => _logSearch;
+        set { if (Set(ref _logSearch, value ?? "")) RebuildLog(); }
+    }
+
+    /// <summary>Shown in the log well when a filter or search hides every line.</summary>
+    public bool NoLogMatches => VisibleLog.Count == 0 && _log.Count > 0;
 
     // Export (screen 6).
     public bool CanExport => _exportState != 1;
@@ -608,7 +676,9 @@ public sealed class Workspace : Observable
         LogTabs = IsMulti ? [.. nodes.Select(n => n.Name), "All"] : [.. nodes.Select(n => n.Name)];
         Raise(nameof(LogTabs));
         _logTab = 0;
-        Raise(nameof(LogTab));
+        _logFilter = TestFilter.All;
+        _logSearch = "";
+        Raise(nameof(LogTab), nameof(LogFilter), nameof(LogSearch));
 
         Screen = Screen.Running;
         _selectedNode = null;
@@ -694,7 +764,7 @@ public sealed class Workspace : Observable
             return;
         }
         if (Nodes.Sum(n => n.Version) != _version) Changed();
-        Raise(nameof(ElapsedText), nameof(HeaderRightText));
+        Raise(nameof(ElapsedText), nameof(HeaderRightText), nameof(MapEtaText));
     }
 
     /// <summary>A test started/finished somewhere: refresh the list and the taskbar.</summary>
@@ -724,7 +794,7 @@ public sealed class Workspace : Observable
         Sync(VisibleTests, ShowAll ? done : done.Take(5).ToList());
         Raise(nameof(RunningTest), nameof(HasMore), nameof(ShowMoreText), nameof(EmptyText), nameof(QueueText),
             nameof(CanStopSelected), nameof(StopSelectedText), nameof(HeaderCount), nameof(HeaderCountRest), nameof(HeaderRightText),
-            nameof(TotalTests), nameof(TotalDone), nameof(TotalFailed));
+            nameof(TotalTests), nameof(TotalDone), nameof(TotalFailed), nameof(MapEtaText));
     }
 
     private bool Matches(TestItem t) => StateFilter switch
@@ -739,20 +809,37 @@ public sealed class Workspace : Observable
     {
         _log.Add(line);
         if (_log.Count > 2000) _log.RemoveRange(0, 500);
-        if (!IsAllLogs && line.Node != _logTab) return;
+        if (!LogMatches(line)) return;
         if (VisibleLog.Count > 0) VisibleLog[^1].ShowCursor = false;
         line.ShowCursor = IsRunning;
         VisibleLog.Add(line);
         if (VisibleLog.Count > 300) VisibleLog.RemoveAt(0);
+        if (VisibleLog.Count == 1) Raise(nameof(NoLogMatches));
+    }
+
+    private bool LogMatches(LogLine line)
+    {
+        bool kind = _logFilter switch
+        {
+            TestFilter.Passed => line.Kind == LogKind.Pass,
+            TestFilter.Failed => line.Kind == LogKind.Fail,
+            TestFilter.Aborted => line.Kind == LogKind.Abort,
+            _ => true,
+        };
+        if (!kind) return false;
+        if (_logSearch.Length == 0) return true;
+        return line.Text.Contains(_logSearch, StringComparison.OrdinalIgnoreCase)
+            || line.Dim.Contains(_logSearch, StringComparison.OrdinalIgnoreCase)
+            || line.NodeName.Contains(_logSearch, StringComparison.OrdinalIgnoreCase);
     }
 
     private void RebuildLog()
     {
         foreach (var line in VisibleLog) line.ShowCursor = false;
         VisibleLog.Clear();
-        foreach (var line in _log.Where(l => IsAllLogs || l.Node == _logTab).TakeLast(300)) VisibleLog.Add(line);
+        foreach (var line in _log.Where(LogMatches).TakeLast(300)) VisibleLog.Add(line);
         if (IsRunning && VisibleLog.Count > 0) VisibleLog[^1].ShowCursor = true;
-        Raise(nameof(IsAllLogs));
+        Raise(nameof(IsAllLogs), nameof(NoLogMatches));
     }
 
     /// <summary>Sample → nodes from the design. Real folder → one node per sub-folder of the test folder (multi mode), else one node.</summary>
@@ -761,6 +848,7 @@ public sealed class Workspace : Observable
         if (_projectRoot is null) return PipelineNode.Sample(_sampleSingle);
         string? tests = Slots[0].Item?.FullPath;
         if (tests is null || !Directory.Exists(tests)) return [PipelineNode.ForFolder("Tests", SpecCount, 1)];
+        if (_mode == 0) return [PipelineNode.ForFolder(Path.GetFileName(tests), SpecCount, 1)]; // single test: always one node
         var subs = Directory.EnumerateDirectories(tests).Where(d => !IgnoredDirs.Contains(Path.GetFileName(d))).Order().ToList();
         if (subs.Count < 2) return [PipelineNode.ForFolder(Path.GetFileName(tests), SpecCount, 1)];
         return [.. subs.Take(6).Select((d, i) => PipelineNode.ForFolder(Path.GetFileName(d), CountSpecs(d), i + 1))];

@@ -52,6 +52,7 @@ public partial class SetupView : UserControl
                 1 => "package.json|package.json",
                 2 => "Source files|*.ts;*.tsx;*.js",
                 3 => "Dockerfile|Dockerfile*",
+                5 => "Requirements|requirements*.txt;*.txt",
                 _ => "Pipeline config|*.yml;*.yaml",
             };
             var dialog = new OpenFileDialog { Title = $"Choose {slot.Title.ToLowerInvariant()}", Filter = filter, InitialDirectory = Ws.ProjectRoot ?? "" };

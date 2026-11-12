@@ -9,7 +9,8 @@ namespace Conduit;
 /// <summary>
 /// Two-option pill switch. The look is in ModeSwitch.xaml; this file holds the selection and the motion:
 /// the thumb's two edges are animated separately, so the edge facing the new side leaves first and the other
-/// one catches up – the thumb stretches like a drop and settles. A wide aurora wash fades in and out over the
+/// one catches up – the thumb stretches like a drop and settles. The chosen side also opens an icon slot (one page
+/// for the first option, a fan of three for the second); the thumb follows the segments as they resize. A wide aurora wash fades in and out over the
 /// whole track at the same time (opacity only, never growing from a point).
 /// Left/Right arrows switch sides. With Windows animations turned off, the thumb simply jumps.
 /// </summary>
@@ -35,12 +36,14 @@ internal sealed partial class ModeSwitch : UserControl
     public static readonly DependencyProperty SecondTextProperty = DependencyProperty.Register(
         nameof(SecondText), typeof(string), typeof(ModeSwitch), new PropertyMetadata("Second"));
 
-    // The thumb's left and right edge, animated on their own. Both feed Canvas.Left + Width of the thumb.
-    private static readonly DependencyProperty ThumbLeftProperty = DependencyProperty.Register(
-        "ThumbLeft", typeof(double), typeof(ModeSwitch), new PropertyMetadata(0d, (d, _) => ((ModeSwitch)d).PlaceThumb()));
+    // How far each edge of the thumb has travelled from the first segment (0) to the second (1), animated on
+    // their own. The pixel position is worked out from the live layout in PlaceThumb, so the thumb stays glued
+    // to the segments while their icon slots open and close mid-flight.
+    private static readonly DependencyProperty LeftTravelProperty = DependencyProperty.Register(
+        "LeftTravel", typeof(double), typeof(ModeSwitch), new PropertyMetadata(0d, (d, _) => ((ModeSwitch)d).PlaceThumb()));
 
-    private static readonly DependencyProperty ThumbRightProperty = DependencyProperty.Register(
-        "ThumbRight", typeof(double), typeof(ModeSwitch), new PropertyMetadata(0d, (d, _) => ((ModeSwitch)d).PlaceThumb()));
+    private static readonly DependencyProperty RightTravelProperty = DependencyProperty.Register(
+        "RightTravel", typeof(double), typeof(ModeSwitch), new PropertyMetadata(0d, (d, _) => ((ModeSwitch)d).PlaceThumb()));
 
     private bool _syncing;
 
@@ -110,34 +113,33 @@ internal sealed partial class ModeSwitch : UserControl
         e.Handled = true;
     }
 
-    // A label got longer or shorter (text or font changed): put the thumb where it belongs, without motion.
+    // A segment got wider or narrower (its icon slot is opening or closing, or the text changed): keep the thumb on it.
     private void OnSegmentSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (IsLoaded)
-            MoveThumb(animate: false);
+            PlaceThumb();
     }
 
     // ── Motion ─────────────────────────────────────────────────────────────
 
     private void MoveThumb(bool animate)
     {
-        var target = Selected;
-        var left = target.TranslatePoint(new Point(0, 0), ThumbLayer).X;
-        var right = left + target.ActualWidth;
+        double target = SelectedIndex;
 
         if (!animate || !SystemParameters.ClientAreaAnimation)
         {
-            BeginAnimation(ThumbLeftProperty, null);
-            BeginAnimation(ThumbRightProperty, null);
-            SetValue(ThumbLeftProperty, left);
-            SetValue(ThumbRightProperty, right);
+            BeginAnimation(LeftTravelProperty, null);
+            BeginAnimation(RightTravelProperty, null);
+            SetValue(LeftTravelProperty, target);
+            SetValue(RightTravelProperty, target);
+            PlaceThumb();
             return;
         }
 
         // The edge facing the new side leads, the other one trails – that gap is the stretch.
-        var movingRight = right > (double)GetValue(ThumbRightProperty);
-        BeginAnimation(ThumbLeftProperty, Glide(left, movingRight ? TrailMs : LeadMs));
-        BeginAnimation(ThumbRightProperty, Glide(right, movingRight ? LeadMs : TrailMs));
+        var movingRight = SelectedIndex == 1;
+        BeginAnimation(LeftTravelProperty, Glide(target, movingRight ? TrailMs : LeadMs));
+        BeginAnimation(RightTravelProperty, Glide(target, movingRight ? LeadMs : TrailMs));
 
         PlayWash(movingRight);
     }
@@ -152,8 +154,19 @@ internal sealed partial class ModeSwitch : UserControl
 
     private void PlaceThumb()
     {
-        var left = (double)GetValue(ThumbLeftProperty);
-        var right = (double)GetValue(ThumbRightProperty);
+        if (!IsLoaded)
+            return;
+
+        var firstLeft = First.TranslatePoint(new Point(0, 0), ThumbLayer).X;
+        var secondLeft = Second.TranslatePoint(new Point(0, 0), ThumbLayer).X;
+        var firstRight = firstLeft + First.ActualWidth;
+        var secondRight = secondLeft + Second.ActualWidth;
+
+        var leftTravel = (double)GetValue(LeftTravelProperty);
+        var rightTravel = (double)GetValue(RightTravelProperty);
+        var left = firstLeft + (secondLeft - firstLeft) * leftTravel;
+        var right = firstRight + (secondRight - firstRight) * rightTravel;
+
         Canvas.SetLeft(Thumb, left);
         Thumb.Width = Math.Max(0, right - left);
     }
