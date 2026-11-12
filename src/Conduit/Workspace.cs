@@ -543,6 +543,9 @@ public sealed class Workspace : Observable
     public string StopText => IsMulti ? "Stop all" : "Stop";
     public string ElapsedText => Fmt.Clock(_elapsed);
 
+    /// <summary>Time since the run started (the taskbar preview estimates the time left from it).</summary>
+    public TimeSpan Elapsed => _elapsed;
+
     public bool LogsOpen
     {
         get => _logsOpen;

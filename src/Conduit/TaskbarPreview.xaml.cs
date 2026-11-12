@@ -7,10 +7,12 @@ namespace Conduit;
 
 /// <summary>
 /// The taskbar hover preview. <see cref="Render"/> fills it from the current run and returns a picture of it,
-/// scaled to the size Windows allows for a thumbnail.
+/// scaled to the size Windows allows for a thumbnail. The look is in TaskbarPreview.xaml.
 /// </summary>
 public partial class TaskbarPreview : UserControl
 {
+    private const double SectionGap = 4; // space between two node sections
+
     public TaskbarPreview() => InitializeComponent();
 
     public BitmapSource Render(Workspace ws, int maxWidth, int maxHeight)
@@ -32,36 +34,55 @@ public partial class TaskbarPreview : UserControl
 
     private void Show(Workspace ws)
     {
-        int done = ws.TotalDone, total = ws.TotalTests, failed = ws.TotalFailed, aborted = ws.Nodes.Sum(n => n.Aborted);
+        int done = ws.TotalDone, total = ws.TotalTests, passed = ws.Nodes.Sum(n => n.Passed);
+        bool running = ws.IsRunning;
 
-        CountText.Text = $"{done} of {total}";
-        FailedText.Text = failed > 0 ? $"{failed} failed" : "";
-        FailedText.Visibility = failed > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // Header
+        RunText.Text = $"Run #{ws.RunNo}";
+        ElapsedText.Text = ws.ElapsedText;
+        LiveDot.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
 
-        TotalDone.Width = new GridLength(done, GridUnitType.Star);
-        TotalRest.Width = new GridLength(Math.Max(0, total - done), GridUnitType.Star);
-        TotalFill.Fill = (Brush)FindResource(failed > 0 ? "Red" : aborted > 0 ? "Amber" : "Green");
+        // Count row: while running "72 of 160 done", afterwards "158 of 160 passed".
+        CountText.Text = (running ? done : passed).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        UnitText.Text = running ? $"of {total} done" : $"of {total} passed";
+        NoteText.Text = running ? TimeLeft(ws, done, total)
+            : ws.Nodes.Any(n => n.Stopped) ? "Stopped" : "Finished";
 
-        bool multi = ws.IsMulti;
-        NodeRows.Visibility = multi ? Visibility.Visible : Visibility.Collapsed;
-        SinglePanel.Visibility = multi ? Visibility.Collapsed : Visibility.Visible;
+        ShowSections(ws);
 
-        if (multi)
+        // One node: there is room to name the test in flight.
+        var only = ws.Nodes.Count == 1 ? ws.Nodes[0] : null;
+        NowText.Text = running && only?.RunningTest is { } test ? test.Name : "";
+        NowText.Visibility = NowText.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Rebuilds the section row: one star column per node, weighted by its number of tests, with a fixed gap column
+    /// between two nodes. Building it anew on every render keeps the numbers exactly those of this moment.
+    /// </summary>
+    private void ShowSections(Workspace ws)
+    {
+        Sections.Children.Clear();
+        Sections.ColumnDefinitions.Clear();
+        var template = (DataTemplate)FindResource("NodeSection");
+
+        for (int i = 0; i < ws.Nodes.Count; i++)
         {
-            NoteText.Text = aborted > 0 ? $"{aborted} aborted" : ws.IsFinished ? $"in {ws.ElapsedText}" : "";
-            // Setting the list again re-reads every node, so the rows always show the numbers of this moment.
-            NodeRows.ItemsSource = null;
-            NodeRows.ItemsSource = ws.Nodes;
+            var node = ws.Nodes[i];
+            if (i > 0) Sections.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(SectionGap) });
+            Sections.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(1, node.Total), GridUnitType.Star) });
+
+            var section = new ContentControl { Content = node, ContentTemplate = template, Focusable = false };
+            Grid.SetColumn(section, Sections.ColumnDefinitions.Count - 1);
+            Sections.Children.Add(section);
         }
-        else if (ws.Nodes.Count > 0)
-        {
-            var node = ws.Nodes[0];
-            NoteText.Text = ws.IsRunning ? ws.HeaderRightText : $"in {ws.ElapsedText}";
-            SingleTitle.Text = $"{node.Name} · {(ws.IsRunning ? "now running" : node.Stopped ? "stopped" : "finished")}";
-            SingleSub.Text = ws.IsRunning && node.RunningTest is { } test ? test.Name
-                : aborted > 0 ? $"{aborted} aborted"
-                : failed > 0 ? "see the failed tests in the report"
-                : "all tests passed";
-        }
+    }
+
+    /// <summary>"about 0:34 left" from the pace so far; empty until the first test finished.</summary>
+    private static string TimeLeft(Workspace ws, int done, int total)
+    {
+        if (done == 0) return "estimating…";
+        var left = TimeSpan.FromSeconds(ws.Elapsed.TotalSeconds / done * (total - done));
+        return $"about {Fmt.Clock(left)} left";
     }
 }
