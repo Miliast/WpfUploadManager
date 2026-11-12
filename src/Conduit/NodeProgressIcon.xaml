@@ -1,0 +1,69 @@
+<!--
+    NodeProgressIcon – the 16 × 16 square progress mark of a node (Paper "9c · Running", node tabs;
+    drawn large on "14 · Node status icons", section "squircle pie").
+
+        ╭──────╮      ╭──────╮      ╭──────╮      ╭──────╮      ╭──────╮●     ████████
+        │      │      │   ▗▄ │      │   █▌ │      │ ▄▄█▌ │      │   █▌ │      ██ ✓ ███
+        │      │      │      │      │   █▌ │      │ ▀▀█▌ │      │   █▌ │      ████████
+        ╰──────╯      ╰──────╯      ╰──────╯      ╰──────╯      ╰──────╯
+        waiting        25 %          50 %          75 %        with a problem    done
+
+    Parts, back to front, all in a 16-unit box:
+      1. Outline ... rounded square, 1.5 stroke, outer edge from 1.25 to 14.75, corner radius 4.95.
+      2. Fill ...... a smaller rounded square (3.9 … 12.1, radius 2.4), 1.15 away from the outline. It is always
+                     the full shape; a pie-shaped clip that opens clockwise from 12 o'clock reveals as much of it as
+                     the node has finished. So any value works – 48 % is not rounded to a half.
+      3. Done ...... solid green rounded square + white check, shown once every test of the node ran.
+      4. Dot ....... badge on the top-right corner: red after a failure, amber after an abort (red wins).
+                     It has a 1.3 ring in the colour of the surface behind the icon, so it reads as "cut out".
+
+    Colours come from outside, so one control serves the selected tab, the idle tabs and the single-mode header:
+      Foreground ... outline + fill          (blue on the selected tab, grey on the others)
+      DotRing ...... ring around the dot     (the tab's background colour)
+
+    Motion (NodeProgressIcon.xaml.cs):
+      · progress ..... the clip sweeps smoothly to the new value instead of jumping
+      · done ......... outline and fill fade out while the green square fades in; the check then draws itself
+      · dot .......... fades in and settles from 80 % to full size the first time a problem shows up
+    Nothing grows out of a point, and with Windows animations turned off every change is immediate.
+
+    Use:  <local:NodeProgressIcon Progress="{Binding Fraction}" IsComplete="{Binding IsComplete}"
+                                  HasFailed="{Binding HasFailed}" HasAborted="{Binding HasAborted}"
+                                  Foreground="{StaticResource Blue}" DotRing="{StaticResource White}" />
+-->
+<UserControl x:Class="Conduit.NodeProgressIcon"
+             x:Name="Root"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="16" Height="16"
+             Focusable="False"
+             VerticalAlignment="Center">
+
+    <Canvas Width="16" Height="16">
+
+        <!-- 1 · Outline -->
+        <Rectangle x:Name="Outline" Canvas.Left="1.25" Canvas.Top="1.25" Width="13.5" Height="13.5"
+                   RadiusX="4.95" RadiusY="4.95" StrokeThickness="1.5"
+                   Stroke="{Binding Foreground, ElementName=Root}" />
+
+        <!-- 2 · Fill: the whole inner shape. Its Clip (a pie slice around the shape's centre) is set by the code-behind. -->
+        <Rectangle x:Name="Fill" Canvas.Left="3.9" Canvas.Top="3.9" Width="8.2" Height="8.2"
+                   RadiusX="2.4" RadiusY="2.4"
+                   Fill="{Binding Foreground, ElementName=Root}" />
+
+        <!-- 3 · Done: green square + check. The check is a stroke, so it can be drawn along its path. -->
+        <Rectangle x:Name="DoneFill" Canvas.Left="1.25" Canvas.Top="1.25" Width="13.5" Height="13.5"
+                   RadiusX="4.9" RadiusY="4.9" Fill="{StaticResource Green}" Opacity="0" />
+        <Path x:Name="DoneCheck" Data="M4.9,8.2 L7,10.3 L11.1,6.1" Stroke="White" StrokeThickness="1.7"
+              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="0" />
+
+        <!-- 4 · Dot: centre (13.2, 2.8), radius 2.6 plus the 1.3 ring → a 6.5 px ellipse. Fill is set in code. -->
+        <Ellipse x:Name="Dot" Canvas.Left="9.95" Canvas.Top="-0.45" Width="6.5" Height="6.5"
+                 StrokeThickness="1.3" Opacity="0" RenderTransformOrigin="0.5,0.5"
+                 Stroke="{Binding DotRing, ElementName=Root}">
+            <Ellipse.RenderTransform>
+                <ScaleTransform x:Name="DotScale" />
+            </Ellipse.RenderTransform>
+        </Ellipse>
+    </Canvas>
+</UserControl>

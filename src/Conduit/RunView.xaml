@@ -16,7 +16,9 @@
     └───────────────────────────────────┴──┴────────────────────────────────────────────┴─┘
 
     Where things live:
-      · colours, fonts, buttons, spinner ........ App.xaml
+      · colours, fonts, buttons ................. App.xaml
+      · test status mark (spinner, ✓ ✕ –) ....... StatusIcon.xaml
+      · square node progress mark ............... NodeProgressIcon.xaml
       · data (nodes, tests, log lines) .......... Workspace.cs / PipelineNode.cs
       · scroll handling + click forwarding ...... RunView.xaml.cs
 
@@ -35,68 +37,18 @@
     <UserControl.Resources>
 
         <!-- ═══════════════════════════════════════════════════════════════════════════════════════
-             1 · NODE ICON (16 × 16) – the squircle in the node tabs and in the single-mode header
+             1 · NODE ICON (16 × 16) – the square progress mark in the node tabs and in the single-mode header
              ═══════════════════════════════════════════════════════════════════════════════════════
-             Parts, all drawn in a 16-unit box:
-               Outline ... rounded square, 1.5 stroke; its outer edge runs from 1.25 to 14.75
-               Wedge ..... the fill, 1.15 away from the outline, in quarter steps (PipelineNode.Quarter):
-                           0 = nothing, 1 = top-right quarter, 2 = right half, 3 = right half + bottom-left
-               Done ...... solid green squircle with a white check once every test ran (Quarter = 4)
-               Dot ....... red (failed) or amber (aborted) badge on the top-right corner
-
-             Colours come from the host ContentControl, so one template serves the selected and the idle tab:
-               Foreground = outline + wedge colour
-               Tag        = colour of the thin ring around the dot (must equal the background behind the icon)
+             The drawing and its motion live in NodeProgressIcon.xaml (+ .cs). This template only connects it to a node
+             and passes the colours of its host ContentControl through, so one template serves every place:
+               Foreground of the host = outline + fill colour (blue on the selected tab, grey on the others)
+               Tag of the host        = colour of the ring around the red / amber dot (the background behind the icon)
         -->
         <DataTemplate x:Key="NodeIcon" DataType="{x:Type local:PipelineNode}">
-            <Canvas Width="16" Height="16">
-
-                <Rectangle x:Name="Outline" Canvas.Left="1.25" Canvas.Top="1.25" Width="13.5" Height="13.5"
-                           RadiusX="4.95" RadiusY="4.95" StrokeThickness="1.5"
-                           Stroke="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}" />
-
-                <!-- Data is set by the Quarter triggers below; empty while nothing has finished yet. -->
-                <Path x:Name="Wedge" Fill="{Binding (TextElement.Foreground), RelativeSource={RelativeSource Self}}" />
-
-                <Rectangle x:Name="DoneFill" Canvas.Left="1.25" Canvas.Top="1.25" Width="13.5" Height="13.5"
-                           RadiusX="4.9" RadiusY="4.9" Fill="{StaticResource Green}" Visibility="Collapsed" />
-                <Path x:Name="DoneCheck" Data="M4.9,8.2 L7,10.3 L11.1,6.1" Stroke="White" StrokeThickness="1.7"
-                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed" />
-
-                <!-- Centre (13.2, 2.8), radius 2.6 plus a 1.3 ring in the background colour. -->
-                <Ellipse x:Name="Dot" Canvas.Left="9.95" Canvas.Top="-0.45" Width="6.5" Height="6.5"
-                         StrokeThickness="1.3" Visibility="Collapsed"
-                         Stroke="{Binding Tag, RelativeSource={RelativeSource AncestorType=ContentControl}}" />
-            </Canvas>
-            <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding Quarter}" Value="1">
-                    <Setter TargetName="Wedge" Property="Data"
-                            Value="M8.5,3.9 H9.7 A2.4,2.4 0 0 1 12.1,6.3 V7.5 A0.5,0.5 0 0 1 11.6,8 H8.5 A0.5,0.5 0 0 1 8,7.5 V4.4 A0.5,0.5 0 0 1 8.5,3.9 Z" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Quarter}" Value="2">
-                    <Setter TargetName="Wedge" Property="Data"
-                            Value="M8.5,3.9 H9.7 A2.4,2.4 0 0 1 12.1,6.3 V9.7 A2.4,2.4 0 0 1 9.7,12.1 H8.5 A0.5,0.5 0 0 1 8,11.6 V4.4 A0.5,0.5 0 0 1 8.5,3.9 Z" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Quarter}" Value="3">
-                    <Setter TargetName="Wedge" Property="Data"
-                            Value="M8.5,3.9 H9.7 A2.4,2.4 0 0 1 12.1,6.3 V9.7 A2.4,2.4 0 0 1 9.7,12.1 H6.3 A2.4,2.4 0 0 1 3.9,9.7 V8.5 A0.5,0.5 0 0 1 4.4,8 H7.5 A0.5,0.5 0 0 0 8,7.5 V4.4 A0.5,0.5 0 0 1 8.5,3.9 Z" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Quarter}" Value="4">
-                    <Setter TargetName="Outline" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="Wedge" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="DoneFill" Property="Visibility" Value="Visible" />
-                    <Setter TargetName="DoneCheck" Property="Visibility" Value="Visible" />
-                </DataTrigger>
-                <!-- Order matters: a node with both shows red, because the later trigger wins. -->
-                <DataTrigger Binding="{Binding HasAborted}" Value="True">
-                    <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
-                    <Setter TargetName="Dot" Property="Fill" Value="{StaticResource Amber}" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding HasFailed}" Value="True">
-                    <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
-                    <Setter TargetName="Dot" Property="Fill" Value="{StaticResource Red}" />
-                </DataTrigger>
-            </DataTemplate.Triggers>
+            <local:NodeProgressIcon Progress="{Binding Fraction}" IsComplete="{Binding IsComplete}"
+                                    HasFailed="{Binding HasFailed}" HasAborted="{Binding HasAborted}"
+                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ContentControl}}"
+                                    DotRing="{Binding Tag, RelativeSource={RelativeSource AncestorType=ContentControl}}" />
         </DataTemplate>
 
         <!-- ═══════════════════════════════════════════════════════════════════════════════════════
@@ -281,7 +233,8 @@
              ═══════════════════════════════════════════════════════════════════════════════════════
              Lanes, left to right, 14 px apart, 12 px row padding:
                number ..... 28 wide, mono 11
-               status ..... 16 × 16 solid disc: green check / red cross / amber dash
+               status ..... 16 × 16 StatusIcon (StatusIcon.xaml): green check / red cross / amber dash; a result that
+                            has just arrived fades in and draws its glyph
                name ....... fills, 14 px
                right ...... passed: duration (48 wide, right-aligned) · failed: "Failed" · aborted: the reason
 
@@ -292,11 +245,7 @@
                 <TextBlock x:Name="Number" DockPanel.Dock="Left" Width="28" Text="{Binding No}" Style="{StaticResource MonoText}" FontSize="11"
                            Foreground="{StaticResource Subtle}" />
 
-                <Canvas DockPanel.Dock="Left" Width="16" Height="16" Margin="14,0,0,0" VerticalAlignment="Center">
-                    <Ellipse x:Name="Disc" Canvas.Left="1" Canvas.Top="1" Width="14" Height="14" Fill="{StaticResource Green}" />
-                    <Path x:Name="Glyph" Data="M4.9,8.2 L7,10.3 L11.1,6.1" Stroke="White" StrokeThickness="1.7"
-                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-                </Canvas>
+                <local:StatusIcon DockPanel.Dock="Left" Margin="14,0,0,0" State="{Binding State}" IsFresh="{Binding IsFresh}" />
 
                 <!-- Passed: how long the test took. -->
                 <TextBlock x:Name="Time" DockPanel.Dock="Right" Width="48" Margin="14,0,0,0" Text="{Binding TimeText}" TextAlignment="Right"
@@ -309,8 +258,6 @@
             </DockPanel>
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding State}" Value="Failed">
-                    <Setter TargetName="Disc" Property="Fill" Value="{StaticResource Red}" />
-                    <Setter TargetName="Glyph" Property="Data" Value="M5.7,5.7 L10.3,10.3 M10.3,5.7 L5.7,10.3" />
                     <Setter TargetName="Number" Property="Foreground" Value="{StaticResource RedText}" />
                     <Setter TargetName="Name" Property="FontWeight" Value="SemiBold" />
                     <Setter TargetName="Name" Property="Foreground" Value="{StaticResource Ink}" />
@@ -321,9 +268,6 @@
                     <Setter TargetName="Row" Property="ToolTip" Value="{Binding Note}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding State}" Value="Aborted">
-                    <Setter TargetName="Disc" Property="Fill" Value="{StaticResource Amber}" />
-                    <Setter TargetName="Glyph" Property="Data" Value="M5.2,8 H10.8" />
-                    <Setter TargetName="Glyph" Property="StrokeThickness" Value="1.8" />
                     <Setter TargetName="Time" Property="Visibility" Value="Collapsed" />
                     <Setter TargetName="Result" Property="Visibility" Value="Visible" />
                     <Setter TargetName="Result" Property="Text" Value="{Binding Note}" />
@@ -686,7 +630,7 @@
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Left" Width="28" Text="{Binding RunningTest.No}" Style="{StaticResource MonoText}" FontSize="11"
                                                Foreground="{StaticResource Blue}" />
-                                    <Control DockPanel.Dock="Left" Margin="14,0,0,0" Template="{StaticResource Spinner}" Focusable="False" VerticalAlignment="Center" />
+                                    <local:StatusIcon DockPanel.Dock="Left" Margin="14,0,0,0" State="Running" />
                                     <TextBlock DockPanel.Dock="Right" Text="Running" Margin="14,0,0,0" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{StaticResource Blue}" VerticalAlignment="Center"
                                                ToolTip="{Binding SelectedNode.RunningForText}" />

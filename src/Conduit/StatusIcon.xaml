@@ -1,0 +1,71 @@
+<!--
+    StatusIcon – the 16 × 16 status mark in front of every test (Paper "9c · Running", test list).
+
+    One control, five states (TestState):
+
+        Queued      Running        Passed       Failed       Aborted
+          ◌            ◠             ✓            ✕             –
+        dashed      blue arc      green disc    red disc     amber disc
+        grey ring   turning on    white check   white cross  white dash
+                    a pale ring
+
+    Layers, back to front (all share the same 16 × 16 box, only one group is visible at a time):
+      1. Halo ...... a soft ring of the result colour, 4 px larger than the icon on every side. Invisible at rest.
+                     It breathes once (opacity only, full size from the first frame) when a test fails or aborts.
+      2. Queued .... dashed grey ring, 12 px, 1.5 stroke.
+      3. Spinner ... pale blue ring (2 px) with a quarter arc in brand blue on top; the whole group turns once every 0.9 s.
+      4. Disc ...... solid 14 px circle + a white glyph drawn as a stroke, so it can "write itself".
+
+    Motion (StatusIcon.xaml.cs), played when a test changes state in front of the user or has just finished:
+      · the spinner fades out while the disc fades in and settles from 86 % to 100 % size – it never grows from a point
+      · the glyph is drawn along its path a moment later: the check from its short leg to its long leg,
+        the two strokes of the cross together, the dash from left to right
+      · failed and aborted add one slow halo pulse; passed stays calm
+    Rows that were already finished when they came into view (scrolling, switching the filter) appear without motion.
+    With Windows animations turned off, every state is shown at once.
+
+    Use:  <local:StatusIcon State="{Binding State}" IsFresh="{Binding IsFresh}" />
+          <local:StatusIcon State="Running" />
+-->
+<UserControl x:Class="Conduit.StatusIcon"
+             x:Name="Root"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="16" Height="16"
+             Focusable="False"
+             VerticalAlignment="Center">
+
+    <Grid>
+
+        <!-- 1 · Halo: 24 × 24 around the 16 px box (hence the negative margin). Fill is set per state in code. -->
+        <Ellipse x:Name="Halo" Margin="-4" Opacity="0" IsHitTestVisible="False" />
+
+        <!-- 2 · Queued: the test has not started yet. -->
+        <Ellipse x:Name="Queued" Width="12" Height="12" Opacity="0"
+                 Stroke="{StaticResource Dot}" StrokeThickness="1.5" StrokeDashArray="1.6 1.5" StrokeDashCap="Round" />
+
+        <!-- 3 · Spinner: track + arc. The arc is a quarter circle from 12 to 3 o'clock; the group rotates around its centre. -->
+        <Grid x:Name="Spinner" Opacity="0" RenderTransformOrigin="0.5,0.5">
+            <Grid.RenderTransform>
+                <RotateTransform x:Name="Spin" />
+            </Grid.RenderTransform>
+            <Ellipse Stroke="{StaticResource BlueRing}" StrokeThickness="2" />
+            <Path Data="M8,1 A7,7 0 0 1 15,8" Stroke="{StaticResource Blue}" StrokeThickness="2"
+                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+        </Grid>
+
+        <!-- 4 · Disc + glyph. The scale transform is only used for the short "settle" when a result arrives. -->
+        <Grid x:Name="Disc" Opacity="0" RenderTransformOrigin="0.5,0.5">
+            <Grid.RenderTransform>
+                <ScaleTransform x:Name="DiscScale" />
+            </Grid.RenderTransform>
+            <Ellipse x:Name="DiscFill" Width="14" Height="14" />
+            <!-- Glyph geometry, thickness and dash length come from the code-behind (one entry per state).
+                 Coordinates are in the 16-unit box of the icon. -->
+            <Canvas Width="16" Height="16">
+                <Path x:Name="Glyph" Stroke="White" StrokeThickness="1.7"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+            </Canvas>
+        </Grid>
+    </Grid>
+</UserControl>

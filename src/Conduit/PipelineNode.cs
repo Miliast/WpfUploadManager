@@ -20,11 +20,17 @@ public sealed class TestItem : Observable
     public string Note { get; private set; } = "";
     public double Secs { get; private set; }
     public bool IsDone => State is TestState.Passed or TestState.Failed or TestState.Aborted;
+
+    /// <summary>The result arrived within the last moment – its row then plays the arrival of the status icon once.</summary>
+    public bool IsFresh => IsDone && (DateTime.Now - _doneAt).TotalSeconds < 1.5;
     public string TimeText => Fmt.Inv($"{Secs:0.0}s");
+
+    private DateTime _doneAt;
 
     internal void Update(TestState state, string note = "", double? secs = null)
     {
         State = state;
+        if (IsDone) _doneAt = DateTime.Now;
         Note = note;
         Secs = secs ?? Secs;
         Raise(string.Empty);
@@ -116,11 +122,6 @@ public sealed class PipelineNode : Observable
 
     /// <summary>All tests ran (check icon); a stopped node keeps its progress ring.</summary>
     public bool IsComplete => Finished && !Stopped;
-    /// <summary>
-    /// Fill level of the squircle node icon in quarter steps: 0 = empty outline, 1–3 = 25 / 50 / 75 %, 4 = all tests ran.
-    /// A node that is still running never shows more than three quarters.
-    /// </summary>
-    public int Quarter => IsComplete ? 4 : Math.Min(3, (int)Math.Round(Fraction * 4, MidpointRounding.AwayFromZero));
     public bool HasFailed => Failed > 0;
     public bool HasAborted => Aborted > 0;
     public string ProgressText => $"{Done}/{Total}";
