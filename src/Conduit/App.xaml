@@ -51,6 +51,7 @@
         <SolidColorBrush x:Key="FailRow" Color="#FDF1F1" />
 
         <SolidColorBrush x:Key="Green" Color="#12A150" />
+        <SolidColorBrush x:Key="GreenText" Color="#0B7A3B" />
         <SolidColorBrush x:Key="GreenSoft" Color="#E4F5EB" />
         <SolidColorBrush x:Key="Red" Color="#E5383B" />
         <SolidColorBrush x:Key="RedText" Color="#C2262A" />

@@ -9,6 +9,8 @@
       RunView         – screens 3–6: node tabs / summary, filters, test list, log panel
       Workspace       – state + logic of all screens (the views bind to it)
       PipelineNode    – one pipeline node, its tests and a fake runner that advances them
+      WhatsNewWindow  – release timeline (F1); its texts are in Changelog.json, the file to edit for a new release,
+                        its pictures and photos in the folder Changelog
       GlowSweep       – aurora glow overlay for auto-fill (look in GlowSweep.xaml, motion in GlowSweep.xaml.cs)
       PixelLogoLoader – linked from src/LogoLoader: the logo-tile loader shown while fetching or exporting
     Moving to .NET 10 later = change TargetFramework to net10.0-windows, nothing else.
@@ -28,6 +30,10 @@
     <Compile Include="..\LogoLoader\PixelLogoLoader.cs" Link="PixelLogoLoader.cs" />
     <!-- Optional own logo: put Assets\logo.png next to the project – it replaces the Conduit mark in the loader, top bar and taskbar. -->
     <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The release texts of the "What's new" window (WhatsNewWindow.xaml), compiled into the app. -->
+    <Resource Include="Changelog.json" />
+    <!-- Its pictures ("image" in Changelog.json) and the photos for "Shipped by" (Changelog\people\<name>.png), compiled in as well. -->
+    <Resource Include="Changelog\**" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,59 @@
+[
+  {
+    "version": "0.1.0",
+    "date": "2026-11-12",
+    "headline": "One switch for single and multiple tests.",
+    "summary": "Choose how you want to run before you fill in anything. The fields below follow the mode you picked.",
+    "by": [ "Mili" ],
+    "items": [
+      { "type": "new", "title": "Mode switch", "text": "A two-sided pill above the fields. The icon moves to the side you chose.", "image": "mode-switch.png" },
+      { "type": "new", "title": "Taskbar preview", "text": "Hover the taskbar button to see every node of the run at a glance.", "image": "taskbar-preview.png" },
+      { "type": "new", "title": "Own logo from Assets\\logo.png" },
+      { "type": "improved", "title": "Softer auto-fill glow" },
+      { "type": "improved", "title": "Log panel remembers its filter" },
+      { "type": "improved", "title": "Sharper icons at 150 % scaling" },
+      { "type": "fixed", "title": "Stop button stayed active after a run" },
+      { "type": "fixed", "title": "Drag and drop ignored folders with spaces" }
+    ]
+  },
+  {
+    "version": "0.0.9",
+    "date": "2026-11-09",
+    "headline": "Every node on its own tab.",
+    "summary": "A run with several nodes shows one tab per node and a summary in front of them.",
+    "image": "node-tabs.png",
+    "tags": [ "Export" ],
+    "by": [ "Mili", "Lena" ],
+    "items": [
+      { "type": "new", "title": "Summary tab with totals for all nodes" },
+      { "type": "new", "title": "Filter tests by passed, failed and aborted" },
+      { "type": "new", "title": "Export results as JSON" },
+      { "type": "fixed", "title": "Progress ring jumped back at 100 %" },
+      { "type": "fixed", "title": "Long test names pushed the status icon out" },
+      { "type": "fixed", "title": "Window lost its shadow when maximised" }
+    ]
+  },
+  {
+    "version": "0.0.8",
+    "date": "2026-10-28",
+    "headline": "Logs, right next to the tests.",
+    "summary": "Open the log panel with Ctrl+L and keep the test list in view.",
+    "items": [
+      { "type": "new", "title": "Log panel inside the run view" },
+      { "type": "new", "title": "Copy a log line with one click" },
+      { "type": "improved", "title": "Failed tests are marked in the log" },
+      { "type": "fixed", "title": "Log scrolled to the top on every new line" }
+    ]
+  },
+  {
+    "version": "0.0.7",
+    "date": "2026-10-14",
+    "headline": "Fill the fields from your project.",
+    "summary": "Pick a project folder and Conduit reads the values it can find.",
+    "items": [
+      { "type": "new", "title": "Get data from X" },
+      { "type": "new", "title": "Drop a folder onto the window" },
+      { "type": "fixed", "title": "Empty fields were not highlighted" }
+    ]
+  }
+]

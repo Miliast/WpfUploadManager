@@ -119,6 +119,12 @@ public partial class MainWindow : Window
             if (e.Key != Key.System) e.Handled = true;
             return;
         }
+        if (e.Key == Key.F1)
+        {
+            new WhatsNewWindow { Owner = this }.ShowDialog();
+            e.Handled = true;
+            return;
+        }
         if (Keyboard.Modifiers != ModifierKeys.Control) return;
         if (e.Key == Key.O && _ws.IsSetup) Setup.PickProjectFolder();
         else if (e.Key == Key.Enter && _ws.IsSetup) _ws.StartRun();
