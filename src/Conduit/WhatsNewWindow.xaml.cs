@@ -7,6 +7,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace Conduit;
@@ -18,15 +20,14 @@ namespace Conduit;
 /// </summary>
 public partial class WhatsNewWindow : Window
 {
-    private const int ShownAtFirst = 3;    // the rest waits behind "Show … and earlier"
-    private const double PinTop = 24;      // a pinned date rests this far below the top edge of the window
-    private const double ReleaseGap = 80;  // empty space under every release (the bottom margin of "Body" in the template)
+    private const int ShownAtFirst = 3; // the rest waits behind "Show … and earlier"
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     private readonly List<Release> _releases;
     private readonly ObservableCollection<Release> _shown = [];
-    private int _current = -1; // the release whose dot is filled right now
+    private readonly HashSet<int> _green = []; // the releases whose leaf is green right now
+    private bool _viewing;                     // the large view of a picture is open
 
     public WhatsNewWindow()
     {
@@ -41,12 +42,12 @@ public partial class WhatsNewWindow : Window
         if (_releases.Count > ShownAtFirst) OlderText.Text = $"Show {_releases[ShownAtFirst].Version} and earlier";
         else OlderRow.Visibility = Visibility.Collapsed;
 
-        Loaded += (_, _) => UpdatePins();
+        Loaded += (_, _) => UpdateStem();
     }
 
     // ── Loading ────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Reads Changelog.json. The file lists the newest release first; that one starts with the filled dot.</summary>
+    /// <summary>Reads Changelog.json. The file lists the newest release first; that one starts with its lists open.</summary>
     private static List<Release> Load()
     {
         using Stream json = Application.GetResourceStream(new Uri("Changelog.json", UriKind.Relative)).Stream;
@@ -66,6 +67,8 @@ public partial class WhatsNewWindow : Window
                     throw new InvalidDataException($"Changelog.json, {release.Version}, \"{change.Title}\": type is \"{change.Type}\" – use new, improved or fixed.");
                 if (change.Picture is { } picture && !Exists(picture))
                     throw new InvalidDataException($"Changelog.json, {release.Version}, \"{change.Title}\": the picture \"{change.Image}\" is not in the Changelog folder.");
+
+                change.Stamp = release.Stamp; // the preview card of a line says which release it belongs to
             }
 
             // A photo is optional: without Changelog\people\<name>.png the circle shows the first letter of the name.
@@ -90,14 +93,16 @@ public partial class WhatsNewWindow : Window
         }
     }
 
-    // ── The date that stays ────────────────────────────────────────────────────────────────────────────────
-    // WPF has no "sticky". While a release is being read, its date block, its dot and a blue trail on the rail
-    // are pushed down by exactly the distance the release has scrolled out at the top. Only render transforms
-    // are touched, so scrolling never causes a new layout pass.
+    // ── The stem that grows ────────────────────────────────────────────────────────────────────────────────
+    // The rail on the left is the stem of the sunflower in the page header. While you read downwards it turns
+    // green behind you, and every release you have reached gets a green leaf. The date of the release being read
+    // stays in view (WPF has no "sticky"): its date block and its leaf are pushed down by exactly the distance
+    // the release has scrolled out at the top. Only render transforms are touched, so scrolling never causes
+    // a new layout pass.
 
-    private void OnScrolled(object sender, ScrollChangedEventArgs e) => UpdatePins();
+    private void OnScrolled(object sender, ScrollChangedEventArgs e) => UpdateStem();
 
-    private void UpdatePins()
+    private void UpdateStem()
     {
         int count = Timeline.Items.Count;
         var rows = new ContentPresenter?[count];
@@ -119,18 +124,21 @@ public partial class WhatsNewWindow : Window
 
             double offset = PinOffset(tops[i], row.ActualHeight, pin.Margin.Top + pin.ActualHeight);
             pin.RenderTransform = new TranslateTransform(0, offset);
-            if (Part<UIElement>(row, "Node") is { } node) node.RenderTransform = new TranslateTransform(0, offset);
-            if (Part<UIElement>(row, "Trail") is { } trail) trail.RenderTransform = new ScaleTransform(1, offset); // 1 px tall, stretched to the dot
-        }
+            if (Part<UIElement>(row, "Node") is { } leaf) leaf.RenderTransform = new TranslateTransform(0, offset);
+            if (Part<UIElement>(row, "Trail") is { } trail) // 1 px tall, stretched to the length the stem has grown
+                trail.RenderTransform = new ScaleTransform(1, StemLength(i, current, row.ActualHeight, offset));
 
-        // The filled dot moves to the release being read – as a soft cross-fade, not a jump.
-        if (current < count && current != _current && rows[current] is { } now)
-        {
-            if (_current >= 0 && _current < count && rows[_current] is { } before) Fade(before, 0);
-            Fade(now, 1);
-            _current = current;
+            // A leaf turns green when its release is reached and grey again when you scroll back above it –
+            // as a soft cross-fade, not a jump.
+            bool green = i <= current;
+            if (green ? _green.Add(i) : _green.Remove(i)) Fade(row, green ? 1 : 0);
         }
     }
+
+    // ── Arithmetic of the stem (no WPF in here) ────────────────────────────────────────────────────────────
+    private const double PinTop = 24;      // a pinned date rests this far below the top edge of the window
+    private const double ReleaseGap = 80;  // empty space under every release (the bottom margin of the body in the template)
+    private const double LeafY = 20;       // a leaf joins the stem this far below the top of its release
 
     /// <summary>
     /// How far a date has to slide down: nothing until its release reaches the pin line, then pixel for pixel
@@ -142,15 +150,76 @@ public partial class WhatsNewWindow : Window
         return Math.Round(Math.Clamp(PinTop - top, 0, room));
     }
 
+    /// <summary>
+    /// How much of a release's piece of the rail is green: all of it once the release lies behind you,
+    /// down to its travelling leaf while you read it, nothing while it is still ahead. Added up over all
+    /// releases this is one unbroken green line from the flower to the leaf next to the pinned date.
+    /// </summary>
+    internal static double StemLength(int index, int current, double rowHeight, double offset) =>
+        index < current ? rowHeight : index == current ? LeafY + offset : 0;
+    // ── end of the arithmetic ──────────────────────────────────────────────────────────────────────────────
+
     private static void Fade(ContentPresenter row, double to)
     {
-        if (Part<UIElement>(row, "NodeOn") is { } dot)
-            dot.BeginAnimation(OpacityProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(180)));
+        if (Part<UIElement>(row, "NodeOn") is { } greenLeaf)
+            greenLeaf.BeginAnimation(OpacityProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(220)));
     }
 
     /// <summary>A named element inside one release of the timeline (see the template "Release").</summary>
     private static T? Part<T>(ContentPresenter row, string name) where T : class =>
         row.ContentTemplate?.FindName(name, row) as T;
+
+    // ── The large view of a picture ────────────────────────────────────────────────────────────────────────
+    // A click on a picture – or on a list line that has one – shows it large, on a panel over the page.
+    // The page behind goes out of focus (blur) and pale. Everything eases in; nothing pops.
+
+    private void OnPictureClicked(object sender, MouseButtonEventArgs e)
+    {
+        Shot? shot = (sender as FrameworkElement)?.DataContext switch
+        {
+            Change change => change.Shot,
+            Release release => release.Shot,
+            _ => null,
+        };
+        if (shot is null) return; // a list line without a picture
+
+        var bitmap = new BitmapImage(new Uri(shot.Picture));
+        ViewerImage.Source = bitmap;
+        ViewerImage.MaxWidth = bitmap.PixelWidth;                  // never blown up beyond its own pixels
+        ViewerImage.MaxHeight = Math.Min(bitmap.PixelHeight, 520);
+        Viewer.DataContext = shot;
+        Viewer.Visibility = Visibility.Visible;
+        _viewing = true;
+
+        var time = TimeSpan.FromMilliseconds(220);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var blur = new BlurEffect();
+        var grow = new ScaleTransform();
+        Scroller.Effect = blur;
+        ViewerPanel.RenderTransform = grow;
+        blur.BeginAnimation(BlurEffect.RadiusProperty, new DoubleAnimation(0, 18, time) { EasingFunction = ease });
+        grow.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.97, 1, time) { EasingFunction = ease });
+        grow.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.97, 1, time) { EasingFunction = ease });
+        Viewer.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, time));
+    }
+
+    private void OnViewerClose(object sender, RoutedEventArgs e) => CloseViewer();
+
+    private void CloseViewer()
+    {
+        if (!_viewing) return;
+        _viewing = false;
+
+        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(140));
+        fade.Completed += (_, _) =>
+        {
+            if (_viewing) return; // opened again while it was fading out
+            Viewer.Visibility = Visibility.Collapsed;
+            Scroller.Effect = null;
+            ViewerImage.Source = null;
+        };
+        Viewer.BeginAnimation(OpacityProperty, fade);
+    }
 
     // ── Keys and buttons ───────────────────────────────────────────────────────────────────────────────────
 
@@ -158,13 +227,16 @@ public partial class WhatsNewWindow : Window
     {
         foreach (var release in _releases.Skip(ShownAtFirst)) _shown.Add(release);
         OlderRow.Visibility = Visibility.Collapsed;
-        Dispatcher.BeginInvoke(new Action(UpdatePins), DispatcherPriority.Loaded); // once the new releases are laid out
+        Dispatcher.BeginInvoke(new Action(UpdateStem), DispatcherPriority.Loaded); // once the new releases are laid out
     }
 
+    /// <summary>Escape closes the large view if one is open, otherwise the window.</summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (e.Key == Key.Escape) Close();
+        if (e.Key != Key.Escape) return;
+        if (_viewing) CloseViewer();
+        else Close();
     }
 }
 
@@ -177,18 +249,39 @@ public sealed class Change
 {
     public string Type { get; set; } = "new";
     public string Title { get; set; } = "";
-    public string? Text { get; set; }
+    public string? Text { get; set; }   // optional: a sentence or two more
     public string? Image { get; set; }  // optional: a file in the Changelog folder, e.g. "mode-switch.png"
 
     // ── Worked out ─────────────────────────────────────────────────────────────────────────────────────────
+    public string Stamp { get; set; } = ""; // "0.1.0 · NOV 12", filled while loading: a line does not know its release
+
     public string? Picture => Release.PictureOf(Image);
+    public bool HasPicture => Picture is not null;
 
     /// <summary>A "new" item that brings a text or a picture gets its own block; all others become list lines.</summary>
     public bool IsFeature => Type == "new" && (!string.IsNullOrEmpty(Text) || !string.IsNullOrEmpty(Image));
+
+    /// <summary>The small word on top of the preview card.</summary>
+    public string Label => Type switch { "new" => "NEW", "improved" => "IMPROVEMENT", "fixed" => "FIX", _ => Type.ToUpperInvariant() };
+
+    /// <summary>What the large view shows for this item; null without a picture.</summary>
+    public Shot? Shot => Picture is { } picture ? new Shot(picture, Title, Text, $"{Label} · {Stamp}") : null;
 }
 
-/// <summary>A small label under the date. <see cref="Kind"/> picks the colour: "feature", "improvement", "fix" or "tag" (grey).</summary>
+/// <summary>A picture in the large view: the picture, a title, an optional text and the small line on the right.</summary>
+public sealed record Shot(string Picture, string Title, string? Text, string Caption);
+
+/// <summary>A small label under the date. <see cref="Kind"/> picks the colour of its dot: "feature", "improvement", "fix" or "tag" (grey).</summary>
 public sealed record Badge(string Text, string Kind);
+
+/// <summary>
+/// One of the lists of a release ("Improvements 3"). It can be folded; <see cref="Open"/> is how it starts.
+/// <see cref="First"/> is the top one of its release – it has no dividing line above it.
+/// </summary>
+public sealed record Fold(string Title, IReadOnlyList<Change> Items, bool Open, bool First)
+{
+    public int Count => Items.Count;
+}
 
 /// <summary>Somebody named under "by". <see cref="Photo"/> is null when there is no picture of them in Changelog\people.</summary>
 public sealed record Author(string Name, string? Photo)
@@ -206,7 +299,7 @@ public sealed class Release
     public string Date { get; set; } = "";      // 2026-11-12
     public string Headline { get; set; } = "";
     public string Summary { get; set; } = "";
-    public string? Image { get; set; }          // optional: a picture under the summary
+    public string? Image { get; set; }          // optional: a picture under the headline
     public List<string> By { get; set; } = [];   // optional: who shipped it – "Shipped by …" at the end
     public List<string> Tags { get; set; } = []; // optional: extra badges besides the automatic ones
     public List<Change> Items { get; set; } = [];
@@ -215,10 +308,16 @@ public sealed class Release
     public bool IsLatest { get; set; }
     public IReadOnlyList<Author> Authors { get; set; } = []; // filled while loading: it needs to look for the photos
 
-    public string DateText =>
-        DateOnly.ParseExact(Date, "yyyy-MM-dd", CultureInfo.InvariantCulture).ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
+    private DateOnly Day => DateOnly.ParseExact(Date, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+    public string DateText => Day.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
+
+    /// <summary>"0.1.0 · NOV 12" – the small line on the preview card and in the large view.</summary>
+    public string Stamp => $"{Version} · {Day.ToString("MMM d", CultureInfo.InvariantCulture).ToUpperInvariant()}";
 
     public string? Picture => PictureOf(Image);
+
+    /// <summary>What the large view shows for the picture of the release; null without one.</summary>
+    public Shot? Shot => Picture is { } picture ? new Shot(picture, Headline, Summary, Stamp) : null;
 
     /// <summary>"new" items with a text or picture: title, paragraph and picture each.</summary>
     public IReadOnlyList<Change> Features => Items.Where(c => c.IsFeature).ToList();
@@ -229,6 +328,21 @@ public sealed class Release
 
     public IReadOnlyList<Change> Improvements => Of("improved");
     public IReadOnlyList<Change> Fixes => Of("fixed");
+
+    /// <summary>
+    /// The lists that have something in them, in their fixed order. In the newest release they start open,
+    /// in older ones folded – there the headline and picture are enough at first sight.
+    /// </summary>
+    public IReadOnlyList<Fold> Folds
+    {
+        get
+        {
+            (string Title, IReadOnlyList<Change> Items)[] lists = [(NewLabel, NewList), ("Improvements", Improvements), ("Fixes", Fixes)];
+            return lists.Where(list => list.Items.Count > 0)
+                        .Select((list, index) => new Fold(list.Title, list.Items, IsLatest, index == 0))
+                        .ToList();
+        }
+    }
 
     /// <summary>
     /// Feature / Improvement / Bug fixes appear by themselves as soon as the release has such an item,

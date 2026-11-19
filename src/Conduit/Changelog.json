@@ -9,7 +9,7 @@
       { "type": "new", "title": "Mode switch", "text": "A two-sided pill above the fields. The icon moves to the side you chose.", "image": "mode-switch.png" },
       { "type": "new", "title": "Taskbar preview", "text": "Hover the taskbar button to see every node of the run at a glance.", "image": "taskbar-preview.png" },
       { "type": "new", "title": "Own logo from Assets\\logo.png" },
-      { "type": "improved", "title": "Softer auto-fill glow" },
+      { "type": "improved", "title": "Softer auto-fill glow", "text": "The glow starts wide and fades in gently, instead of bursting from the field.", "image": "auto-fill-glow.png" },
       { "type": "improved", "title": "Log panel remembers its filter" },
       { "type": "improved", "title": "Sharper icons at 150 % scaling" },
       { "type": "fixed", "title": "Stop button stayed active after a run" },
