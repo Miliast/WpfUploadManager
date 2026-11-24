@@ -486,8 +486,8 @@
     </Window.Resources>
 
     <Grid>
-        <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False"
-                      ScrollChanged="OnScrolled">
+        <!-- The scrolling area. StemScroller (its own two files) moves the stem and makes the wheel glide. -->
+        <local:StemScroller x:Name="Scroller">
             <!-- 1088 = lanes 248 + body 592 + air 248. In a wider window the whole block stays in the middle. -->
             <StackPanel Margin="56,48,56,56" MaxWidth="1088">
 
@@ -569,7 +569,7 @@
                     </Button>
                 </Grid>
             </StackPanel>
-        </ScrollViewer>
+        </local:StemScroller>
 
         <!-- ══ Large view of a picture (opened and closed in WhatsNewWindow.xaml.cs) ═════════════════════════════
              While it is open the page behind is blurred from code and paled by the white veil; a click on the

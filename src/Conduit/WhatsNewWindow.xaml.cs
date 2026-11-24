@@ -26,8 +26,7 @@ public partial class WhatsNewWindow : Window
 
     private readonly List<Release> _releases;
     private readonly ObservableCollection<Release> _shown = [];
-    private readonly HashSet<int> _green = []; // the releases whose leaf is green right now
-    private bool _viewing;                     // the large view of a picture is open
+    private bool _viewing; // the large view of a picture is open
 
     public WhatsNewWindow()
     {
@@ -42,7 +41,6 @@ public partial class WhatsNewWindow : Window
         if (_releases.Count > ShownAtFirst) OlderText.Text = $"Show {_releases[ShownAtFirst].Version} and earlier";
         else OlderRow.Visibility = Visibility.Collapsed;
 
-        Loaded += (_, _) => UpdateStem();
     }
 
     // ── Loading ────────────────────────────────────────────────────────────────────────────────────────────
@@ -92,82 +90,6 @@ public partial class WhatsNewWindow : Window
             return false;
         }
     }
-
-    // ── The stem that grows ────────────────────────────────────────────────────────────────────────────────
-    // The rail on the left is the stem of the sunflower in the page header. While you read downwards it turns
-    // green behind you, and every release you have reached gets a green leaf. The date of the release being read
-    // stays in view (WPF has no "sticky"): its date block and its leaf are pushed down by exactly the distance
-    // the release has scrolled out at the top. Only render transforms are touched, so scrolling never causes
-    // a new layout pass.
-
-    private void OnScrolled(object sender, ScrollChangedEventArgs e) => UpdateStem();
-
-    private void UpdateStem()
-    {
-        int count = Timeline.Items.Count;
-        var rows = new ContentPresenter?[count];
-        var tops = new double[count];
-        int current = 0;
-
-        // Where is every release right now? The last one that has reached the pin line is the one being read.
-        for (int i = 0; i < count; i++)
-        {
-            if (Timeline.ItemContainerGenerator.ContainerFromIndex(i) is not ContentPresenter { IsLoaded: true } row) continue;
-            rows[i] = row;
-            tops[i] = row.TranslatePoint(new Point(), Scroller).Y;
-            if (tops[i] <= PinTop) current = i;
-        }
-
-        for (int i = 0; i < count; i++)
-        {
-            if (rows[i] is not { } row || Part<FrameworkElement>(row, "Pin") is not { } pin) continue;
-
-            double offset = PinOffset(tops[i], row.ActualHeight, pin.Margin.Top + pin.ActualHeight);
-            pin.RenderTransform = new TranslateTransform(0, offset);
-            if (Part<UIElement>(row, "Node") is { } leaf) leaf.RenderTransform = new TranslateTransform(0, offset);
-            if (Part<UIElement>(row, "Trail") is { } trail) // 1 px tall, stretched to the length the stem has grown
-                trail.RenderTransform = new ScaleTransform(1, StemLength(i, current, row.ActualHeight, offset));
-
-            // A leaf turns green when its release is reached and grey again when you scroll back above it –
-            // as a soft cross-fade, not a jump.
-            bool green = i <= current;
-            if (green ? _green.Add(i) : _green.Remove(i)) Fade(row, green ? 1 : 0);
-        }
-    }
-
-    // ── Arithmetic of the stem (no WPF in here) ────────────────────────────────────────────────────────────
-    private const double PinTop = 24;      // a pinned date rests this far below the top edge of the window
-    private const double ReleaseGap = 80;  // empty space under every release (the bottom margin of the body in the template)
-    private const double LeafY = 20;       // a leaf joins the stem this far below the top of its release
-
-    /// <summary>
-    /// How far a date has to slide down: nothing until its release reaches the pin line, then pixel for pixel
-    /// with the scrolling, and never further than the end of its own release (so it cannot run into the next date).
-    /// </summary>
-    internal static double PinOffset(double top, double rowHeight, double pinHeight)
-    {
-        double room = Math.Max(0, rowHeight - ReleaseGap - pinHeight);
-        return Math.Round(Math.Clamp(PinTop - top, 0, room));
-    }
-
-    /// <summary>
-    /// How much of a release's piece of the rail is green: all of it once the release lies behind you,
-    /// down to its travelling leaf while you read it, nothing while it is still ahead. Added up over all
-    /// releases this is one unbroken green line from the flower to the leaf next to the pinned date.
-    /// </summary>
-    internal static double StemLength(int index, int current, double rowHeight, double offset) =>
-        index < current ? rowHeight : index == current ? LeafY + offset : 0;
-    // ── end of the arithmetic ──────────────────────────────────────────────────────────────────────────────
-
-    private static void Fade(ContentPresenter row, double to)
-    {
-        if (Part<UIElement>(row, "NodeOn") is { } greenLeaf)
-            greenLeaf.BeginAnimation(OpacityProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(220)));
-    }
-
-    /// <summary>A named element inside one release of the timeline (see the template "Release").</summary>
-    private static T? Part<T>(ContentPresenter row, string name) where T : class =>
-        row.ContentTemplate?.FindName(name, row) as T;
 
     // ── The large view of a picture ────────────────────────────────────────────────────────────────────────
     // A click on a picture – or on a list line that has one – shows it large, on a panel over the page.
@@ -227,7 +149,6 @@ public partial class WhatsNewWindow : Window
     {
         foreach (var release in _releases.Skip(ShownAtFirst)) _shown.Add(release);
         OlderRow.Visibility = Visibility.Collapsed;
-        Dispatcher.BeginInvoke(new Action(UpdateStem), DispatcherPriority.Loaded); // once the new releases are laid out
     }
 
     /// <summary>Escape closes the large view if one is open, otherwise the window.</summary>

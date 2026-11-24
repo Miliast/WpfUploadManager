@@ -1,0 +1,334 @@
+<!--
+    WhatsNewButton – the way into "What's new" and back out again, as ONE self-contained WPF UserControl
+    (this file + WhatsNewButton.xaml.cs). Only the button and its states; the What's new page itself is not in here.
+    Paper: "18 · What's new next to the logo — states", "19 · What's new — the way back, states",
+           in context: "18a" (setup), "19a" (open from setup), "19b" (open during a run).
+
+    Where it sits: in the top bar, right after the product name, where "/ New run" used to be.
+
+        ▣ Conduit  [ this control ]                                   …status…  [ action ]   –  □  ✕
+
+    ONE control, three looks. The code-behind picks the look from three properties (Version, HasUnread, BackTo):
+
+      Look     What you see                    Size / type                                       Hover
+      ───────  ──────────────────────────────  ────────────────────────────────────────────────  ──────────────────────────
+      Version  ✿ 0.1.0                         26 high, no background. Sunflower 14 at 70 %,     6 % dark veil, sunflower
+               (normal, everything read)       version in Mono 12, Muted. 6 px between them.     100 %, version turns Ink
+      New      ╭──────────────────╮            26 high, white, 1 px hairline, radius 8.          hairline gets darker
+               │ ✿ New in 0.1.0   │            Sunflower 14 in bloom, 12 SemiBold Ink.
+               ╰──────────────────╯            (after an update, until What's new was opened)
+      Back     ╭────────────────────────╮      30 high, white, 1 px hairline, radius 8.          hairline gets darker
+               │ ← Back to setup   Esc  │      Arrow 14, 13 SemiBold Ink, Esc keycap (Mono 11).
+               ╰────────────────────────╯      "Back to setup" / "Back to run" / "Back to results".
+                                               Nothing else next to it on purpose – no progress, no results.
+
+    Version and New show a dark tooltip below them: "What's new  [F1]". Back has none – Esc is printed on it.
+    Pressing: Version gets a 10 % veil, New/Back a light grey fill. Keyboard focus (Tab) draws a blue ring; a mouse
+    click does not (FocusVisualStyle only shows for keyboard focus).
+
+    The sunflower is our team mark (team Sunflower) and the same flower that sits on the rail of the What's new page:
+    in bloom = something new, at 70 % = resting until the next release.
+
+    Requirements: WPF, net8.0-windows or later, C# 12, no NuGet packages. Namespace "Conduit.WhatsNew" – rename it here
+    (x:Class, xmlns:local) and in WhatsNewButton.xaml.cs together. Every colour, font and icon is in
+    UserControl.Resources below; nothing comes from App.xaml.
+-->
+<UserControl x:Class="Conduit.WhatsNew.WhatsNewButton"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Conduit.WhatsNew"
+             x:Name="Root"
+             FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
+             HorizontalAlignment="Left" VerticalAlignment="Center"
+             UseLayoutRounding="True" SnapsToDevicePixels="True">
+
+    <UserControl.Resources>
+
+        <!-- ══ Colours ═══════════════════════════════════════════════════════════════════════════════ -->
+        <SolidColorBrush x:Key="Ink" Color="#0B0D12" />
+        <SolidColorBrush x:Key="Muted" Color="#5B6270" />
+        <SolidColorBrush x:Key="Subtle" Color="#8A909C" />
+        <SolidColorBrush x:Key="KeyOnDark" Color="#C9CDD4" />
+        <SolidColorBrush x:Key="KeyOnDarkFill" Color="#2A2D35" />
+        <SolidColorBrush x:Key="Hairline" Color="#E3E5E8" />
+        <SolidColorBrush x:Key="HairlineHover" Color="#C9CDD4" />
+        <SolidColorBrush x:Key="White" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="PressedFill" Color="#F6F7F9" />
+        <SolidColorBrush x:Key="Veil" Color="#0F0B0D12" />          <!-- Ink at 6 % -->
+        <SolidColorBrush x:Key="VeilPressed" Color="#1A0B0D12" />   <!-- Ink at 10 % -->
+        <SolidColorBrush x:Key="FocusBlue" Color="#1F4BFF" />
+
+        <FontFamily x:Key="Mono">JetBrains Mono, Cascadia Mono, Consolas</FontFamily>
+
+        <!-- ══ Sunflower, drawn in an 18 × 18 box ═════════════════════════════════════════════════════
+             Two rings of eight petals (the back ring turned by 22.5°, a shade darker) around a brown seed head.
+             Nonzero fill so overlapping petals do not cut holes into each other. The transparent square keeps the
+             drawing exactly 18 × 18, so the flower sits centred at any size. -->
+        <DrawingImage x:Key="Sunflower">
+            <DrawingImage.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="Transparent" Geometry="M0,0 H18 V18 H0 Z" />
+                    <!-- Back petals -->
+                    <GeometryDrawing Brush="#E48D0B">
+                        <GeometryDrawing.Geometry>
+                            <GeometryGroup FillRule="Nonzero">
+                                <EllipseGeometry Center="9,3.6" RadiusX="1.9" RadiusY="3.3"><EllipseGeometry.Transform><RotateTransform Angle="22.5" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.6" RadiusX="1.9" RadiusY="3.3"><EllipseGeometry.Transform><RotateTransform Angle="67.5" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.6" RadiusX="1.9" RadiusY="3.3"><EllipseGeometry.Transform><RotateTransform Angle="112.5" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.6" RadiusX="1.9" RadiusY="3.3"><EllipseGeometry.Transform><RotateTransform Angle="157.5" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.6" RadiusX="1.9" RadiusY="3.3"><EllipseGeometry.Transform><RotateTransform Angle="202.5" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.6" RadiusX="1.9" RadiusY="3.3"><EllipseGeometry.Transform><RotateTransform Angle="247.5" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.6" RadiusX="1.9" RadiusY="3.3"><EllipseGeometry.Transform><RotateTransform Angle="292.5" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.6" RadiusX="1.9" RadiusY="3.3"><EllipseGeometry.Transform><RotateTransform Angle="337.5" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                            </GeometryGroup>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                    <!-- Front petals -->
+                    <GeometryDrawing Brush="#FFC531">
+                        <GeometryDrawing.Geometry>
+                            <GeometryGroup FillRule="Nonzero">
+                                <EllipseGeometry Center="9,3.4" RadiusX="2" RadiusY="3.4" />
+                                <EllipseGeometry Center="9,3.4" RadiusX="2" RadiusY="3.4"><EllipseGeometry.Transform><RotateTransform Angle="45" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.4" RadiusX="2" RadiusY="3.4"><EllipseGeometry.Transform><RotateTransform Angle="90" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.4" RadiusX="2" RadiusY="3.4"><EllipseGeometry.Transform><RotateTransform Angle="135" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.4" RadiusX="2" RadiusY="3.4"><EllipseGeometry.Transform><RotateTransform Angle="180" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.4" RadiusX="2" RadiusY="3.4"><EllipseGeometry.Transform><RotateTransform Angle="225" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.4" RadiusX="2" RadiusY="3.4"><EllipseGeometry.Transform><RotateTransform Angle="270" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                                <EllipseGeometry Center="9,3.4" RadiusX="2" RadiusY="3.4"><EllipseGeometry.Transform><RotateTransform Angle="315" CenterX="9" CenterY="9" /></EllipseGeometry.Transform></EllipseGeometry>
+                            </GeometryGroup>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                    <!-- Seed head -->
+                    <GeometryDrawing Brush="#5F3C17"><GeometryDrawing.Geometry><EllipseGeometry Center="9,9" RadiusX="3.5" RadiusY="3.5" /></GeometryDrawing.Geometry></GeometryDrawing>
+                    <GeometryDrawing Brush="#472A11"><GeometryDrawing.Geometry><EllipseGeometry Center="9,9" RadiusX="2" RadiusY="2" /></GeometryDrawing.Geometry></GeometryDrawing>
+                </DrawingGroup>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+
+        <!-- ══ Small parts ═══════════════════════════════════════════════════════════════════════════ -->
+
+        <!-- Keycap on a light surface ("Esc" on the back pill): Mono 11, hairline, radius 4. -->
+        <Style x:Key="Keycap" TargetType="Border">
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="5,1" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{StaticResource Hairline}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextElement.FontFamily" Value="{StaticResource Mono}" />
+            <Setter Property="TextElement.FontSize" Value="11" />
+            <Setter Property="TextElement.Foreground" Value="{StaticResource Subtle}" />
+        </Style>
+
+        <!-- Keyboard focus: a blue ring 3 px outside the button. Only shows for Tab, never after a click. -->
+        <Style x:Key="FocusRing">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Border Margin="-3" CornerRadius="11" BorderThickness="1.5" BorderBrush="{StaticResource FocusBlue}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Tooltip: Ink, radius 7, white 12 Medium text + an F1 keycap. Opens 6 px below the button. -->
+        <Style x:Key="DarkTip" TargetType="ToolTip">
+            <Setter Property="Placement" Value="Bottom" />
+            <Setter Property="VerticalOffset" Value="6" />
+            <Setter Property="HasDropShadow" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border Background="{StaticResource Ink}" CornerRadius="7" Padding="10,6,6,6">
+                            <ContentPresenter />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <ToolTip x:Key="OpenTip" Style="{StaticResource DarkTip}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="What's new" VerticalAlignment="Center" FontSize="12" FontWeight="Medium" Foreground="{StaticResource White}" />
+                <Border Margin="8,0,0,0" CornerRadius="4" Padding="5,1" Background="{StaticResource KeyOnDarkFill}" VerticalAlignment="Center">
+                    <TextBlock Text="F1" FontFamily="{StaticResource Mono}" FontSize="11" Foreground="{StaticResource KeyOnDark}" />
+                </Border>
+            </StackPanel>
+        </ToolTip>
+
+        <!-- ══ The button ═════════════════════════════════════════════════════════════════════════════
+             One Border ("Face") for all three looks. Tag carries the look (WhatsNewLook), the triggers below give
+             each look its surface. Padding is the Paper padding minus the 1 px border, so the content lands on the
+             same pixels as in Paper. -->
+        <Style x:Key="Chip" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Padding" Value="5,0,7,0" />
+            <Setter Property="ToolTip" Value="{StaticResource OpenTip}" />
+            <Setter Property="ToolTipService.InitialShowDelay" Value="400" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Face" CornerRadius="8" BorderThickness="1"
+                                Background="Transparent" BorderBrush="Transparent"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <!-- Surfaces: New and Back are white chips with a hairline; Version stays flat. -->
+                            <Trigger Property="Tag" Value="{x:Static local:WhatsNewLook.New}">
+                                <Setter TargetName="Face" Property="Background" Value="{StaticResource White}" />
+                                <Setter TargetName="Face" Property="BorderBrush" Value="{StaticResource Hairline}" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="{x:Static local:WhatsNewLook.Back}">
+                                <Setter TargetName="Face" Property="Background" Value="{StaticResource White}" />
+                                <Setter TargetName="Face" Property="BorderBrush" Value="{StaticResource Hairline}" />
+                            </Trigger>
+                            <!-- Hover -->
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="Tag" Value="{x:Static local:WhatsNewLook.Version}" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Face" Property="Background" Value="{StaticResource Veil}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="Tag" Value="{x:Static local:WhatsNewLook.New}" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Face" Property="BorderBrush" Value="{StaticResource HairlineHover}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="Tag" Value="{x:Static local:WhatsNewLook.Back}" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Face" Property="BorderBrush" Value="{StaticResource HairlineHover}" />
+                            </MultiTrigger>
+                            <!-- Pressed -->
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsPressed" Value="True" />
+                                    <Condition Property="Tag" Value="{x:Static local:WhatsNewLook.Version}" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Face" Property="Background" Value="{StaticResource VeilPressed}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsPressed" Value="True" />
+                                    <Condition Property="Tag" Value="{x:Static local:WhatsNewLook.New}" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Face" Property="Background" Value="{StaticResource PressedFill}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsPressed" Value="True" />
+                                    <Condition Property="Tag" Value="{x:Static local:WhatsNewLook.Back}" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Face" Property="Background" Value="{StaticResource PressedFill}" />
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <!-- Size per look: Version 26 high (6 | 8 in Paper), New 26 (7 | 10), Back 30 (9 | 6), no tooltip. -->
+                <DataTrigger Binding="{Binding Look, ElementName=Root}" Value="{x:Static local:WhatsNewLook.New}">
+                    <Setter Property="Padding" Value="6,0,9,0" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Look, ElementName=Root}" Value="{x:Static local:WhatsNewLook.Back}">
+                    <Setter Property="Height" Value="30" />
+                    <Setter Property="Padding" Value="8,0,5,0" />
+                    <Setter Property="ToolTip" Value="{x:Null}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Shows its panel only for one look (the panel's Tag names the look). -->
+        <Style x:Key="OnlyFor" TargetType="StackPanel">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:WhatsNewLook.Version}" />
+                        <Condition Binding="{Binding Look, ElementName=Root}" Value="{x:Static local:WhatsNewLook.Version}" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:WhatsNewLook.New}" />
+                        <Condition Binding="{Binding Look, ElementName=Root}" Value="{x:Static local:WhatsNewLook.New}" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="{x:Static local:WhatsNewLook.Back}" />
+                        <Condition Binding="{Binding Look, ElementName=Root}" Value="{x:Static local:WhatsNewLook.Back}" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+
+    </UserControl.Resources>
+
+    <Button x:Name="Chip" Style="{StaticResource Chip}" Tag="{Binding Look, ElementName=Root}" Click="OnChipClick">
+        <Grid>
+
+            <!-- ── Version: ✿ 0.1.0 ─────────────────────────────────────────────────────────────────── -->
+            <StackPanel Style="{StaticResource OnlyFor}" Tag="{x:Static local:WhatsNewLook.Version}">
+                <Image Source="{StaticResource Sunflower}" Width="14" Height="14" VerticalAlignment="Center">
+                    <Image.Style>
+                        <Style TargetType="Image">
+                            <Setter Property="Opacity" Value="0.7" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsMouseOver, ElementName=Chip}" Value="True">
+                                    <Setter Property="Opacity" Value="1" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Image.Style>
+                </Image>
+                <TextBlock Text="{Binding Version, ElementName=Root}" Margin="6,0,0,0" VerticalAlignment="Center"
+                           FontFamily="{StaticResource Mono}" FontSize="12">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource Muted}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsMouseOver, ElementName=Chip}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource Ink}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+
+            <!-- ── New: ✿ New in 0.1.0 ──────────────────────────────────────────────────────────────── -->
+            <StackPanel Style="{StaticResource OnlyFor}" Tag="{x:Static local:WhatsNewLook.New}">
+                <Image Source="{StaticResource Sunflower}" Width="14" Height="14" VerticalAlignment="Center" />
+                <TextBlock Margin="6,0,0,0" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{StaticResource Ink}">
+                    <Run Text="New in " /><Run Text="{Binding Version, ElementName=Root, Mode=OneWay}" />
+                </TextBlock>
+            </StackPanel>
+
+            <!-- ── Back: ← Back to setup / run / results   Esc ──────────────────────────────────────── -->
+            <StackPanel Style="{StaticResource OnlyFor}" Tag="{x:Static local:WhatsNewLook.Back}">
+                <Path Data="M11.5,7 H3 M6.5,3.5 L3,7 L6.5,10.5" Width="14" Height="14" VerticalAlignment="Center"
+                      Stroke="{StaticResource Ink}" StrokeThickness="1.4"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                <TextBlock Text="{Binding BackText, ElementName=Root}" Margin="8,0,0,0" VerticalAlignment="Center"
+                           FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource Ink}" />
+                <Border Style="{StaticResource Keycap}" Margin="8,0,0,0">
+                    <TextBlock Text="Esc" />
+                </Border>
+            </StackPanel>
+
+        </Grid>
+    </Button>
+</UserControl>
