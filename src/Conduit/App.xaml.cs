@@ -66,6 +66,86 @@ public sealed class PathIcon : FrameworkElement
     }
 }
 
+/// <summary>
+/// One line of path text that never hides the file name: when the path is wider than the element, folders from the middle
+/// give way to "…" – <c>\\corp-fs01\platform\…\node-ci\2026-q4\Dockerfile</c>. The root (server + share, drive + first
+/// folder) and as many trailing parts as fit stay. Font and colour come from the parent like a TextBlock's.
+/// </summary>
+public sealed class CompactPath : FrameworkElement
+{
+    private const string Gap = "…";
+
+    public static readonly DependencyProperty TextProperty = DependencyProperty.Register(
+        nameof(Text), typeof(string), typeof(CompactPath), new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty ForegroundProperty = TextElement.ForegroundProperty.AddOwner(
+        typeof(CompactPath), new FrameworkPropertyMetadata(Brushes.Black, FrameworkPropertyMetadataOptions.Inherits | FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty FontFamilyProperty = TextElement.FontFamilyProperty.AddOwner(
+        typeof(CompactPath), new FrameworkPropertyMetadata(SystemFonts.MessageFontFamily, FrameworkPropertyMetadataOptions.Inherits | FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty FontSizeProperty = TextElement.FontSizeProperty.AddOwner(
+        typeof(CompactPath), new FrameworkPropertyMetadata(12.0, FrameworkPropertyMetadataOptions.Inherits | FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public string Text { get => (string)GetValue(TextProperty); set => SetValue(TextProperty, value); }
+    public Brush Foreground { get => (Brush)GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
+    public FontFamily FontFamily { get => (FontFamily)GetValue(FontFamilyProperty); set => SetValue(FontFamilyProperty, value); }
+    public double FontSize { get => (double)GetValue(FontSizeProperty); set => SetValue(FontSizeProperty, value); }
+
+    /// <summary>Takes whatever width it is given; height of one line.</summary>
+    protected override Size MeasureOverride(Size availableSize) => new(0, Format("M").Height);
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        if (sizeInfo.WidthChanged) InvalidateVisual();
+    }
+
+    protected override void OnRender(DrawingContext drawingContext)
+    {
+        if (string.IsNullOrEmpty(Text) || ActualWidth <= 0) return;
+        var text = Format(Fit(Text, ActualWidth));
+        drawingContext.PushClip(new RectangleGeometry(new Rect(RenderSize)));
+        drawingContext.DrawText(text, new Point(0, (ActualHeight - text.Height) / 2));
+        drawingContext.Pop();
+    }
+
+    private string Fit(string path, double width)
+    {
+        if (Fits(path, width)) return path;
+
+        // Split into parts, each with the separator in front of it: "\\corp-fs01" "\platform" "\shared" … "\Dockerfile".
+        var parts = new List<string>();
+        int start = 0;
+        while (start < path.Length && path[start] is '\\' or '/') start++; // leading "\\" of a network path belongs to the first part
+        for (int i = start; i <= path.Length; i++)
+        {
+            if (i < path.Length && path[i] is not ('\\' or '/')) continue;
+            if (i > start) parts.Add(path[(parts.Count == 0 ? 0 : start)..i]);
+            start = i;
+        }
+        if (parts.Count < 2) return path; // a single long name: the clip cuts it
+
+        string sep = path.Contains('\\') ? "\\" : "/";
+        string head = string.Concat(parts.Take(Math.Min(2, parts.Count - 1)));
+        string tail = parts[^1];
+        for (int i = parts.Count - 2; i >= 2; i--)
+        {
+            if (!Fits(head + sep + Gap + parts[i] + tail, width)) break;
+            tail = parts[i] + tail;
+        }
+        if (Fits(head + sep + Gap + tail, width)) return head + sep + Gap + tail;
+        return Gap + tail; // not even the root fits next to the file name
+    }
+
+    private bool Fits(string text, double width) => Format(text).WidthIncludingTrailingWhitespace <= width;
+
+    private FormattedText Format(string text) => new(
+        text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+        new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+        FontSize, Foreground, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+}
+
 /// <summary>Attached properties for the shared templates.</summary>
 public static class Look
 {

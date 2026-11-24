@@ -46,21 +46,35 @@ public sealed record TreeRow(string Rel, string Name, bool IsDir, int Depth, boo
 /// <summary>One of the five inputs of a run (screens 1/2), also listed in the run sidebar (3–6).</summary>
 public sealed class Slot(int index, string title, string hint, string tag, string tagColor, bool isFolder) : Observable
 {
-    private bool _isDragOver;
+    private bool _isDragOver, _checking;
+    private string? _typed;
 
     public int Index { get; } = index;
     public string Title { get; } = title;
+    /// <summary>What belongs here (".ts, .tsx or .js") – the grey placeholder of the empty path field.</summary>
     public string Hint { get; } = hint;
     public string Tag { get; } = tag;
     public string TagColor { get; } = tagColor;
     public bool IsFolder { get; } = isFolder;
-    public string ActionText => IsFolder ? "Add folder" : "Add file";
 
     public FileItem? Item { get; private set; }
     public string Detail { get; private set; } = "";
     public bool IsFilled => Item is not null;
+    /// <summary>File name once filled (run sidebar), otherwise the field's name.</summary>
     public string Name => Item?.Name ?? Title;
-    public string Subtitle => Item is null ? Hint : Detail;
+
+    /// <summary>Why a typed path was not taken ("Not found"); shown in red before "Browse".</summary>
+    public string? Error { get; private set; }
+    public bool HasError => Error is not null;
+
+    /// <summary>Grey text before "Browse": spec count / size, "Checking…" while the disk is asked, or the error.</summary>
+    public string Meta => Error ?? (_checking ? "Checking…" : Item is null ? "" : Detail);
+
+    /// <summary>What the path field shows: relative inside the project, absolute outside it, or the typed text that didn't resolve.</summary>
+    public string PathText => _typed ?? Item?.Rel ?? Item?.FullPath ?? "";
+
+    /// <summary>Counts commits of typed paths, so a slow disk answer for an older text is dropped.</summary>
+    internal int Version { get; set; }
 
     /// <summary>Something droppable hovers over the field: it lights up and says what will happen.</summary>
     public bool IsDragOver
@@ -69,14 +83,40 @@ public sealed class Slot(int index, string title, string hint, string tag, strin
         set { if (Set(ref _isDragOver, value)) Raise(nameof(DisplayTitle)); }
     }
 
-    public string DisplayTitle => !IsDragOver ? Name
+    /// <summary>The row's label: always the field's name (the path field shows the file), or what a drop would do.</summary>
+    public string DisplayTitle => !IsDragOver ? Title
         : Item is null ? $"Drop to add {Title.ToLowerInvariant()}"
         : $"Drop to replace {Item.Name}";
 
     internal void Fill(FileItem? item, string detail)
     {
+        Version++; // a disk check still running for an older typed path must not overwrite this
         Item = item;
         Detail = detail;
+        _typed = null;
+        _checking = false;
+        Error = null;
+        Raise(string.Empty);
+    }
+
+    /// <summary>A typed path that leads nowhere (or to the wrong kind of file): the field keeps the text, the slot is empty again.</summary>
+    internal void Reject(string typed, string error)
+    {
+        Item = null;
+        Detail = "";
+        _typed = typed;
+        _checking = false;
+        Error = error;
+        Raise(string.Empty);
+    }
+
+    /// <summary>The disk is being asked about a typed path. The previous file stays until the answer comes, so the Run
+    /// button doesn't flicker off under the mouse; Run itself waits for the answer (Workspace.WhenPathsChecked).</summary>
+    internal void SetChecking(string typed)
+    {
+        _typed = typed;
+        _checking = true;
+        Error = null;
         Raise(string.Empty);
     }
 }
@@ -251,19 +291,27 @@ public sealed class Workspace : Observable
     public string AutoFillText => _matchCount > 0 ? $"Auto-fill {Fmt.Plural(_matchCount, "field")}" : "Filling…";
 
     // "Get data from X" card.
+    // Where the data comes from and what it is for: next to "Import" while empty, inside the subtitle once loaded.
+    private const string XRoute = "Gen X · from BAX";
+
     public bool XFetching => _xState == 1;
     public bool XLoaded => _xState == 2;
     public bool CanFetchX => !XFetching;
     public string XTitle => XLoaded ? "X data loaded" : "Get data from X";
-    public string XButtonText => XFetching ? "Fetching…" : "Get X data";
+    public string XButtonText => XFetching ? "Fetching…" : "Import";
+    public string XSubtitle => "Latest test data from the X interface";
+    public string XHint => $"For {XRoute}";
 
-    public string XSubtitle
+    // Loaded subtitle in three runs: "160 records " + "for Gen X · from BAX" (darker) + " · 2 min ago".
+    public string XRecordsText => "160 records ";
+    public string XRouteText => $"for {XRoute}";
+
+    public string XAgeText
     {
         get
         {
-            if (!XLoaded) return "Pull the latest test data from the X interface";
             int minutes = (int)(DateTime.Now - _xLoadedAt).TotalMinutes;
-            return $"160 records · fetched {(minutes < 1 ? "just now" : $"{minutes} min ago")}";
+            return $" · {(minutes < 1 ? "just now" : $"{minutes} min ago")}";
         }
     }
 
@@ -271,11 +319,11 @@ public sealed class Workspace : Observable
     {
         if (XFetching) return;
         _xState = 1;
-        Raise(nameof(XFetching), nameof(XLoaded), nameof(CanFetchX), nameof(XTitle), nameof(XSubtitle), nameof(XButtonText));
+        Raise(nameof(XFetching), nameof(XLoaded), nameof(CanFetchX), nameof(XTitle), nameof(XAgeText), nameof(XButtonText));
         await Busy("Fetching X data", Task.Delay(1200)); // stand-in for the call to the X interface
         _xState = 2;
         _xLoadedAt = DateTime.Now;
-        Raise(nameof(XFetching), nameof(XLoaded), nameof(CanFetchX), nameof(XTitle), nameof(XSubtitle), nameof(XButtonText));
+        Raise(nameof(XFetching), nameof(XLoaded), nameof(CanFetchX), nameof(XTitle), nameof(XAgeText), nameof(XButtonText));
     }
 
     /// <summary>Reads the folder into the sidebar tree and fills every field it can match.</summary>
@@ -334,30 +382,114 @@ public sealed class Workspace : Observable
         SetupChanged();
     }
 
-    /// <summary>Puts a file/folder into a field and builds its detail line ("Project manifest · 264 B").</summary>
-    public void Assign(int slot, FileItem item, bool notify = true)
+    /// <summary>Puts a file/folder into a field; the grey detail before "Browse" is the spec count or the size.</summary>
+    public void Assign(int slot, FileItem item, bool notify = true, int? specs = null)
     {
         if (slot < 0 || slot >= Slots.Count) return;
         string detail;
         if (slot == 0)
         {
-            SpecCount = item.Rel is not null && _tree.Any(t => t.Rel == item.Rel)
+            SpecCount = specs ?? (item.Rel is not null && _tree.Any(t => t.Rel == item.Rel)
                 ? _tree.Count(t => !t.IsDir && t.Rel.StartsWith(item.Rel + "/", StringComparison.Ordinal) && IsSpec(t.Rel))
-                : CountSpecs(item.FullPath);
-            detail = $"Test folder · {Fmt.Plural(SpecCount, "spec")}";
+                : CountSpecs(item.FullPath));
+            detail = Fmt.Plural(SpecCount, "spec");
         }
         else
         {
-            string folder = item.Rel is { } rel && rel.Contains('/') ? $"{rel[..rel.LastIndexOf('/')]}/ · " : "";
-            detail = slot switch
-            {
-                2 => $"Source file · {folder}{Fmt.Size(item.Size)}",
-                4 => $"Pipeline config · {folder}{Fmt.Size(item.Size)}",
-                _ => $"{Slots[slot].Title} · {Fmt.Size(item.Size)}",
-            };
+            detail = Fmt.Size(item.Size);
         }
         Slots[slot].Fill(item, detail);
         if (notify) SetupChanged();
+    }
+
+    /// <summary>
+    /// A path typed or pasted into a field (on Enter or when the field loses focus). Relative paths start at the project
+    /// folder; absolute and network paths (\\server\share\…) are taken as they are. The disk is asked off the UI thread,
+    /// because an unreachable share can take seconds. Only a path that exists and fits the field fills it – anything else
+    /// leaves the field empty with the reason in red, so "Ready" never counts a bad path.
+    /// </summary>
+    public Task AssignPathAsync(Slot field, string text)
+    {
+        var task = AssignPathCoreAsync(field, text);
+        _pathChecks.RemoveAll(t => t.IsCompleted);
+        if (!task.IsCompleted) _pathChecks.Add(task);
+        return task;
+    }
+
+    /// <summary>Typed paths still being checked on disk. Run waits for them, so it never starts with an unchecked path.</summary>
+    public Task WhenPathsChecked()
+    {
+        _pathChecks.RemoveAll(t => t.IsCompleted);
+        return Task.WhenAll([.. _pathChecks]);
+    }
+
+    private readonly List<Task> _pathChecks = [];
+
+    private async Task AssignPathCoreAsync(Slot field, string text)
+    {
+        text = text.Trim().Trim('"').Trim();
+        if (text == field.PathText) return;
+        int version = ++field.Version;
+
+        if (text.Length == 0)
+        {
+            field.Fill(null, "");
+            SetupChanged();
+            return;
+        }
+
+        string full;
+        if (!Path.IsPathRooted(text))
+        {
+            string rel = text.Replace('\\', '/').TrimEnd('/');
+            if (rel.StartsWith("./", StringComparison.Ordinal)) rel = rel[2..];
+            if (FindItem(rel) is { } known) // in the open (or sample) project's tree – no disk needed
+            {
+                if (known.IsDir != field.IsFolder) field.Reject(text, "Not found");
+                else if (SlotFor(known.Name, known.IsDir) != field.Index) field.Reject(text, $"Expected {field.Hint}");
+                else Assign(field.Index, known, notify: false);
+                SetupChanged();
+                return;
+            }
+            if (_projectRoot is null)
+            {
+                field.Reject(text, "Type the full path");
+                SetupChanged();
+                return;
+            }
+            full = Path.Combine(_projectRoot, rel.Replace('/', Path.DirectorySeparatorChar));
+        }
+        else
+        {
+            full = text;
+        }
+
+        field.SetChecking(text);
+        SetupChanged();
+        string? root = _projectRoot;
+        bool folder = field.IsFolder;
+        var (item, specs) = await Task.Run(() => Probe(full, folder, root));
+        if (version != field.Version) return; // typed again in the meantime
+
+        if (item is null) field.Reject(text, "Not found");
+        else if (SlotFor(item.Name, item.IsDir) != field.Index) field.Reject(text, $"Expected {field.Hint}");
+        else Assign(field.Index, item, notify: false, specs);
+        SetupChanged();
+    }
+
+    /// <summary>Disk check for a typed path (runs off the UI thread, touches no shared state).</summary>
+    private static (FileItem? Item, int Specs) Probe(string path, bool folder, string? root)
+    {
+        try
+        {
+            string full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)); // "tests\" → name "tests"
+            if (folder ? !Directory.Exists(full) : !File.Exists(full)) return (null, 0);
+            return (MakeItem(full, root), folder ? CountSpecs(full) : 0);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
+        {
+            return (null, 0); // characters a path can't contain, or a share that refuses us
+        }
     }
 
     public void ToggleFolder(TreeRow row)
@@ -401,11 +533,13 @@ public sealed class Workspace : Observable
     }
 
     /// <summary>A real file or folder (Explorer drop, file dialog).</summary>
-    public FileItem External(string path)
+    public FileItem External(string path) => MakeItem(path, _projectRoot);
+
+    private static FileItem MakeItem(string path, string? root)
     {
         bool dir = Directory.Exists(path);
-        string? rel = _projectRoot is not null && path.StartsWith(_projectRoot, StringComparison.OrdinalIgnoreCase)
-            ? Path.GetRelativePath(_projectRoot, path).Replace('\\', '/') : null;
+        string? rel = root is not null && path.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+            ? Path.GetRelativePath(root, path).Replace('\\', '/') : null;
         return new FileItem(Path.GetFileName(path), dir, dir ? 0 : new FileInfo(path).Length, path, rel);
     }
 

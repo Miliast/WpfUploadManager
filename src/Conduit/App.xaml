@@ -14,7 +14,6 @@
         <SolidColorBrush x:Key="BlueHover" Color="#1A40E0" />
         <SolidColorBrush x:Key="BlueSoft" Color="#F3F6FF" />
         <SolidColorBrush x:Key="BlueChip" Color="#EEF2FF" />
-        <SolidColorBrush x:Key="BlueTile" Color="#F0F3FF" />
         <SolidColorBrush x:Key="BlueRing" Color="#C9D4FF" />
         <SolidColorBrush x:Key="BlueLight" Color="#7D97FF" />
 
@@ -278,7 +277,7 @@
             </Style.Triggers>
         </Style>
 
-        <!-- Black "Open folder", "Get X data", "Auto-fill". -->
+        <!-- Black "Open folder", "Auto-fill" – only in the sidebar, so on the white sheet the blue "Run pipelines" stays the one strong button. -->
         <Style x:Key="Btn.Dark" TargetType="Button" BasedOn="{StaticResource Btn}">
             <Setter Property="Background" Value="{StaticResource Ink}" />
             <Setter Property="Foreground" Value="White" />
@@ -294,18 +293,7 @@
             </Style.Triggers>
         </Style>
 
-        <!-- Grey pill "Add file". -->
-        <Style x:Key="Btn.Chip" TargetType="Button" BasedOn="{StaticResource Btn}">
-            <Setter Property="Background" Value="{StaticResource Chip}" />
-            <Setter Property="local:Look.CornerRadius" Value="15" />
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{StaticResource ChipHover}" />
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <!-- White with hairline: "Get X data" after loading. -->
+        <!-- White with hairline: "Import" / "Refresh" on the X card (96 × 30). -->
         <Style x:Key="Btn.Outline" TargetType="Button" BasedOn="{StaticResource Btn}">
             <Setter Property="Background" Value="White" />
             <Setter Property="Foreground" Value="{StaticResource Ink}" />
@@ -316,7 +304,39 @@
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="{StaticResource Hover}" />
                 </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource Faint}" />
+                </Trigger>
             </Style.Triggers>
+        </Style>
+
+        <!-- Small white "Browse" at the right end of a path field (26 high, radius 7). Its hover is a shade darker
+             than Btn.Outline's, because the field around it is already the light Hover grey. -->
+        <Style x:Key="Btn.Mini" TargetType="Button" BasedOn="{StaticResource Btn.Outline}">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="local:Look.CornerRadius" Value="7" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource Chip}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- ══ Path field text box ═══════════════════════════════════════════
+             Bare text box inside a path field – the field's Border draws fill and ring, the box only the mono text and a blue caret. -->
+        <Style x:Key="PathBox" TargetType="TextBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FontFamily" Value="{StaticResource Mono}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource Ink}" />
+            <Setter Property="CaretBrush" Value="{StaticResource Blue}" />
+            <Setter Property="SelectionBrush" Value="{StaticResource Blue}" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         </Style>
 
         <!-- Soft red "Stop all". -->
@@ -360,7 +380,7 @@
             </Style.Triggers>
         </Style>
 
-        <!-- Text links: blue ("Try a sample project") and grey ("Replace", "Show 19 earlier tests"). -->
+        <!-- Text links: blue ("Try a sample project") and grey ("Show 19 earlier tests"). -->
         <Style x:Key="Btn.Link" TargetType="Button" BasedOn="{StaticResource Btn}">
             <Setter Property="Foreground" Value="{StaticResource Blue}" />
             <Setter Property="FontWeight" Value="Medium" />

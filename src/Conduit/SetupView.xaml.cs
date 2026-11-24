@@ -61,6 +61,34 @@ public partial class SetupView : UserControl
         if (path is not null) Ws.Assign(slot.Index, Ws.External(path));
     }
 
+    // ── Path fields: typed or pasted paths ─────────────────────────────────
+
+    /// <summary>Enter takes the path, Esc puts the old one back. (Ctrl+Enter never arrives here – MainWindow catches it first.)</summary>
+    private async void OnPathKeyDown(object sender, KeyEventArgs e)
+    {
+        var box = (TextBox)sender;
+        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            e.Handled = true;
+            await CommitAsync(box);
+            box.CaretIndex = box.Text.Length;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            box.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();
+            Keyboard.ClearFocus();
+        }
+    }
+
+    private async void OnPathLostFocus(object sender, KeyboardFocusChangedEventArgs e) => await CommitAsync((TextBox)sender);
+
+    private Task CommitAsync(TextBox box) => box.DataContext is Slot slot ? Ws.AssignPathAsync(slot, box.Text) : Task.CompletedTask;
+
+    /// <summary>Ctrl+Enter while typing a path: take the path first, so the run sees it.</summary>
+    public Task CommitTypedPathAsync() =>
+        Keyboard.FocusedElement is TextBox { Name: "PathBox" } box && IsAncestorOf(box) ? CommitAsync(box) : Task.CompletedTask;
+
     // ── Sidebar tree: click toggles a folder, dragging starts drag & drop ──
 
     private void OnTreeRowDown(object sender, MouseButtonEventArgs e) => _pressedAt = e.GetPosition((IInputElement)sender);

@@ -1,5 +1,7 @@
 <!--
-    SetupView – screens 1 + 2 (Setup), built from the Paper artboard "1c · Setup — mode switch, 6 fields".
+    SetupView – screens 1 + 2 (Setup), built from the Paper artboard "1c · Setup — mode switch, 6 fields";
+    path fields (variant A) and the quiet X card from "1e · Variant A — hint in the field, same row", "2c · Variant A — filled"
+    and "16 · Path field — states". The same screen as two standalone files: handoff/SetupScreen.
 
     ┌───────────────────────────── MainWindow top bar (56) ─────────────────────────────┐
     │ Sidebar (300, on the grey shell)  │  Sheet (white, radius 14, inset 8 right/bottom) │
@@ -7,14 +9,14 @@
     │  empty:  PROJECT                  │   Set up the run.        ( Single | ▣ Multiple ) │  heading 36 Bold + mode switch
     │          skeleton tree            │   Add the six files below, or drop them …       │  subtitle 14, Muted
     │          "Open your project"      │  ╭─────────────────────────────────────────────╮ │
-    │          [ Open folder  Ctrl+O ]  │  │ ▢ Test folder        Specs for …  [Add folder]│ │  fields card: hairline, radius 16,
-    │          Try a sample project     │  │ ▢ Project manifest   package.json [Add file] │ │  6 px padding, one 68 px row per field
-    │                                   │  │ ▢ Source file …                              │ │
-    │  filled: project name · n files   │  │ ▢ Container …                                │ │
+    │          [ Open folder  Ctrl+O ]  │  │ ▢ Test folder      ( Specs for all nodes [Browse]) │ │  fields card: hairline, radius 16,
+    │          Try a sample project     │  │ ▢ Project manifest ( package.json        [Browse]) │ │  6 px padding, one 68 px row per field;
+    │                                   │  │ ▢ Source file      ( .ts, .tsx or .js    [Browse]) │ │  name 144, path field fills the rest, the hint
+    │  filled: project name · n files   │  │ ▢ Container …                                │ │  is its placeholder (type, paste, Browse or drop)
     │          [ Filter files        ]  │  │ ▢ Pipeline config …                          │ │
     │          file tree (scrolls)      │  │ ▢ Requirements …       (multiple tests only) │ │
     │          ───────────────────────  │  ╰─────────────────────────────────────────────╯ │
-    │          [ ✦ Auto-fill 2 fields ] │  ╭ ☁ Get data from X ………………………… [ ⭳ Get X data ] ╮ │  second card, 16 below
+    │          [ ✦ Auto-fill 2 fields ] │  ╭ ┆☁┆ Get data from X     For Gen X · from BAX [⭳ Import] ╮ │  second card, 16 below, all quiet
     │          ⭱ Drag files from here … │  ╰─────────────────────────────────────────────╯ │
     │                                   │   ⓘ Tip: open the whole project folder …        │  pinned to the bottom (screen 1)
     └───────────────────────────────────┴─────────────────────────────────────────────────┘
@@ -125,37 +127,39 @@
         </DataTemplate>
 
         <!-- ═══════════════════════════════════════════════════════════════════════════════════════
-             2 · ONE INPUT FIELD – a 68 px row of the fields card
+             2 · ONE INPUT FIELD – a 68 px row of the fields card (Paper variant A)
              ═══════════════════════════════════════════════════════════════════════════════════════
-             A 1 px divider sits above every row but the first (72 px from the left, 16 from the right, so it
-             starts under the title, not under the glyph).
-
+             A 1 px divider sits above every row but the first (72 px from the left, 16 from the right).
              Lanes inside the row (16 px side padding):
-               glyph ...... 40 × 40
-                              folder field ... blue gradient folder with a soft blue shadow; dashed outline while empty
-                              file field ..... white page 30 × 38 with two grey text lines and a coloured type tag
-                                               (JSON, TS, DOCKER, YML, TXT) at its bottom-left; dashed outline and a
-                                               grey tag while empty
-               text ....... 16 px after the glyph: title 14 SemiBold, subtitle 13 Subtle 2 px below
-                              empty  → field name + hint            ("Source file" / ".ts, .tsx or .js")
-                              filled → file name + what it is        ("index.ts" / "Source file · src/ · 106 B")
-               action ..... right-aligned
-                              empty  → chip button 96 × 30           ("Add folder" / "Add file")
-                              filled → quiet text link               ("Replace")
-
-             While a file is dragged over the row: BlueSoft background, 1.5 px blue outline, blue title
-             ("Drop to replace ci.yml"), action hidden.
-        -->
+               glyph ....... 40 × 40 – folder: blue gradient folder, dashed outline while empty;
+                             file: white page 30 × 38 with a coloured type tag (JSON, TS, DOCKER, YML, TXT), dashed + grey while empty
+               name ........ 16 px after the glyph, 144 wide: the field's name, 14 SemiBold, one line ("Source file")
+               path field .. 16 px after the name, fills the rest (company paths are long); 32 high, radius 9, no border
+                               empty  → Hover fill, the field's hint as grey placeholder (".ts, .tsx or .js")
+                               filled → path in mono Ink: relative inside the project, absolute outside it; too long →
+                                        shortened in the middle (\\corp-fs01\platform\…\2026-q4\Dockerfile);
+                                        size or spec count in grey before Browse ("106 B", "6 specs")
+                               focus  → white, 1 px BlueRing, the full path to edit; Enter or leaving the field commits,
+                                        Esc puts the old path back
+                               error  → RedLine ring, the reason in red before Browse ("Not found")
+                             right end: white "Browse" (26 high)
+             While a file is dragged over the row: BlueSoft background, 1.5 px blue outline, blue "Drop to replace ci.yml"
+             across the field's lane, path field hidden. The row listens with Preview events, because the text box
+             would otherwise take the drag as text. -->
         <DataTemplate x:Key="FieldTemplate" DataType="{x:Type local:Slot}">
             <StackPanel>
                 <Border x:Name="Divider" Height="1" Margin="72,0,16,0" Background="{StaticResource LineSoft}" />
                 <Border x:Name="Row" Height="68" CornerRadius="10" Padding="16,0" BorderThickness="1.5" BorderBrush="Transparent"
                         Background="Transparent" AllowDrop="True"
-                        DragOver="OnFieldDragOver" DragLeave="OnFieldDragLeave" Drop="OnFieldDrop">
-                    <DockPanel>
+                        PreviewDragEnter="OnFieldDragOver" PreviewDragOver="OnFieldDragOver" DragLeave="OnFieldDragLeave" PreviewDrop="OnFieldDrop">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="176" />
+                            <ColumnDefinition Width="*" MinWidth="160" />
+                        </Grid.ColumnDefinitions>
 
-                        <!-- Glyph: blue folder / document with a coloured type tag; dashed outline while empty. -->
-                        <Grid DockPanel.Dock="Left" Width="40" Height="40">
+                        <Grid Width="40" Height="40">
                             <Grid x:Name="FolderGlyph" Height="34" Visibility="Collapsed">
                                 <Grid x:Name="FolderFull">
                                     <Rectangle Width="18" Height="10" RadiusX="3" RadiusY="3" Fill="{StaticResource BlueLight}"
@@ -200,19 +204,31 @@
                             </Grid>
                         </Grid>
 
-                        <Grid x:Name="Action" DockPanel.Dock="Right" VerticalAlignment="Center">
-                            <Button x:Name="AddButton" Style="{StaticResource Btn.Chip}" Width="96" Height="30" Padding="0"
-                                    Content="{Binding ActionText}" Click="OnBrowseField" />
-                            <Button x:Name="ReplaceButton" Style="{StaticResource Btn.LinkMuted}" Content="Replace" Padding="4"
-                                    Visibility="Collapsed" Click="OnBrowseField" />
-                        </Grid>
+                        <TextBlock x:Name="Title" Grid.Column="1" Text="{Binding DisplayTitle}" Margin="16,0" VerticalAlignment="Center"
+                                   FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
 
-                        <StackPanel VerticalAlignment="Center" Margin="16,0">
-                            <TextBlock x:Name="Title" Text="{Binding DisplayTitle}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                            <TextBlock x:Name="Subtitle" Text="{Binding Subtitle}" Margin="0,2,0,0" Foreground="{StaticResource Subtle}"
-                                       TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </DockPanel>
+                        <!-- Path field. Three layers in the text lane: the grey hint (empty), the shortened path (filled, not
+                             focused) and the text box itself, whose text only shows while it has focus. -->
+                        <Border x:Name="Field" Grid.Column="2" Height="32" CornerRadius="9" BorderThickness="1" Padding="11,0,2,0"
+                                VerticalAlignment="Center" Background="{StaticResource Hover}" BorderBrush="Transparent">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Style="{StaticResource Btn.Mini}" Content="Browse" Click="OnBrowseField" />
+                                <TextBlock x:Name="Meta" DockPanel.Dock="Right" Text="{Binding Meta}" Margin="8,0,8,0" FontSize="12"
+                                           Foreground="{StaticResource Subtle}" VerticalAlignment="Center"
+                                           Visibility="{Binding Meta, Converter={StaticResource VisibleWhen}}" />
+                                <Grid>
+                                    <TextBlock x:Name="Placeholder" Text="{Binding Hint}" Margin="2,0,0,0" VerticalAlignment="Center"
+                                               Foreground="{StaticResource Subtle}" TextTrimming="CharacterEllipsis" IsHitTestVisible="False"
+                                               Visibility="Collapsed" />
+                                    <local:CompactPath x:Name="ShortPath" Text="{Binding PathText}" Margin="2,0,0,0" IsHitTestVisible="False"
+                                                       FontFamily="{StaticResource Mono}" FontSize="12" Foreground="{StaticResource Ink}" />
+                                    <TextBox x:Name="PathBox" Style="{StaticResource PathBox}" Foreground="Transparent"
+                                             Text="{Binding PathText, Mode=OneWay}"
+                                             KeyDown="OnPathKeyDown" LostKeyboardFocus="OnPathLostFocus" />
+                                </Grid>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
                 </Border>
             </StackPanel>
             <DataTemplate.Triggers>
@@ -231,16 +247,27 @@
                     <Setter TargetName="TypeTag" Property="Background" Value="{StaticResource Line}" />
                     <Setter TargetName="TypeText" Property="Foreground" Value="{StaticResource Subtle}" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding IsFilled}" Value="True">
-                    <Setter TargetName="AddButton" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="ReplaceButton" Property="Visibility" Value="Visible" />
+                <DataTrigger Binding="{Binding Text, ElementName=PathBox}" Value="">
+                    <Setter TargetName="Placeholder" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding HasError}" Value="True">
+                    <Setter TargetName="Field" Property="BorderBrush" Value="{StaticResource RedLine}" />
+                    <Setter TargetName="Meta" Property="Foreground" Value="{StaticResource RedText}" />
+                    <Setter TargetName="Meta" Property="FontWeight" Value="Medium" />
+                </DataTrigger>
+                <!-- Editing: white field with the blue ring and the full path in the text box. -->
+                <DataTrigger Binding="{Binding IsKeyboardFocused, ElementName=PathBox}" Value="True">
+                    <Setter TargetName="Field" Property="Background" Value="White" />
+                    <Setter TargetName="Field" Property="BorderBrush" Value="{StaticResource BlueRing}" />
+                    <Setter TargetName="PathBox" Property="Foreground" Value="{StaticResource Ink}" />
+                    <Setter TargetName="ShortPath" Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsDragOver}" Value="True">
                     <Setter TargetName="Row" Property="Background" Value="{StaticResource BlueSoft}" />
                     <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource Blue}" />
                     <Setter TargetName="Title" Property="Foreground" Value="{StaticResource Blue}" />
-                    <Setter TargetName="Subtitle" Property="Foreground" Value="{StaticResource Muted}" />
-                    <Setter TargetName="Action" Property="Visibility" Value="Hidden" />
+                    <Setter TargetName="Title" Property="Grid.ColumnSpan" Value="2" />
+                    <Setter TargetName="Field" Property="Visibility" Value="Hidden" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -461,20 +488,40 @@
                         </Border>
 
                         <!-- ── "Get data from X" card ───────────────────────────────────────────────────────
-                             16 below the fields. Same hairline card, 22 × 14 padding (68 high).
-                               tile ..... 40 × 40, radius 10, pale blue, cloud icon; green check badge once loaded
+                             16 below the fields. Same hairline card, 22 × 14 padding (68 high). Kept quiet on purpose: nothing
+                             filled or tinted, so the blue "Run pipelines" stays the one strong button on the page.
+                               tile ..... 34 × 34 in the 40 px glyph lane, radius 9, cloud icon – speaks the field glyphs' language:
+                                          empty  → dashed outline, Subtle icon
+                                          loaded → white with hairline + soft shadow, Ink icon, green check badge
                                text ..... 16 px after the tile: title 14 SemiBold, subtitle 13 Subtle
-                               button ... before loading: dark "Get X data" with a download icon (32 high)
-                                          after loading:  outlined "Get X data" with a refresh icon -->
+                                          loaded subtitle: "160 records " + "for Gen X · from BAX" (Muted Medium) + " · 2 min ago"
+                               right .... empty  → "For Gen X · from BAX" (13 Muted Medium) 16 px before a white "Import" (96 × 30)
+                                          loaded → white "Refresh" (96 × 30); the hint moved into the subtitle -->
                         <Grid Margin="0,16,0,0">
                             <Border Background="White" BorderBrush="#170B0D12" BorderThickness="1" CornerRadius="16" Padding="22,14">
                                 <DockPanel>
                                     <Grid DockPanel.Dock="Left" Width="40" Height="40">
-                                        <Border CornerRadius="10" Background="{StaticResource BlueTile}">
-                                            <local:PathIcon Data="{StaticResource Geo.Cloud}" Box="18" Width="18" Height="18" StrokeThickness="1.5"
-                                                            Foreground="{StaticResource Blue}" />
+                                        <Rectangle Width="34" Height="34" RadiusX="9" RadiusY="9" Stroke="{StaticResource Dashed}" StrokeThickness="1.5"
+                                                   StrokeDashArray="2 1.4" Visibility="{Binding XLoaded, Converter={StaticResource CollapsedWhen}}" />
+                                        <Border Width="34" Height="34" CornerRadius="9" Background="White" BorderBrush="{StaticResource Hairline}" BorderThickness="1"
+                                                Visibility="{Binding XLoaded, Converter={StaticResource VisibleWhen}}">
+                                            <Border.Effect>
+                                                <DropShadowEffect BlurRadius="4" ShadowDepth="2" Direction="270" Color="#0B0D12" Opacity="0.06" />
+                                            </Border.Effect>
                                         </Border>
-                                        <Grid Width="20" Height="20" Margin="0,0,-6,-6" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                        <local:PathIcon Data="{StaticResource Geo.Cloud}" Box="18" Width="18" Height="18" StrokeThickness="1.5">
+                                            <local:PathIcon.Style>
+                                                <Style TargetType="local:PathIcon">
+                                                    <Setter Property="Foreground" Value="{StaticResource Subtle}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding XLoaded}" Value="True">
+                                                            <Setter Property="Foreground" Value="{StaticResource Ink}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </local:PathIcon.Style>
+                                        </local:PathIcon>
+                                        <Grid Width="20" Height="20" Margin="0,0,-4,-4" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                               Visibility="{Binding XLoaded, Converter={StaticResource VisibleWhen}}">
                                             <Ellipse Fill="White" />
                                             <Ellipse Margin="2" Fill="{StaticResource Green}" />
@@ -482,26 +529,36 @@
                                         </Grid>
                                     </Grid>
 
-                                    <Grid DockPanel.Dock="Right" VerticalAlignment="Center">
-                                        <Button Style="{StaticResource Btn.Outline}" Height="32" Padding="11,0,12,0" Click="OnFetchX"
-                                                Visibility="{Binding XLoaded, Converter={StaticResource VisibleWhen}}">
-                                            <StackPanel Orientation="Horizontal">
-                                                <local:PathIcon Data="{StaticResource Geo.Refresh}" Width="13" Height="13" StrokeThickness="1.4" />
-                                                <TextBlock Text="Get X data" Margin="8,0,0,0" />
-                                            </StackPanel>
-                                        </Button>
-                                        <Button Style="{StaticResource Btn.Dark}" local:Look.CornerRadius="8" Height="32" Padding="11,0,12,0" Click="OnFetchX"
-                                                IsEnabled="{Binding CanFetchX}" Visibility="{Binding XLoaded, Converter={StaticResource CollapsedWhen}}">
-                                            <StackPanel Orientation="Horizontal">
-                                                <local:PathIcon Data="{StaticResource Geo.Download}" Width="13" Height="13" StrokeThickness="1.4" />
-                                                <TextBlock Text="{Binding XButtonText}" Margin="8,0,0,0" />
-                                            </StackPanel>
-                                        </Button>
-                                    </Grid>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding XHint}" Margin="0,0,16,0" VerticalAlignment="Center" FontWeight="Medium"
+                                                   Foreground="{StaticResource Muted}" Visibility="{Binding XLoaded, Converter={StaticResource CollapsedWhen}}" />
+                                        <Grid>
+                                            <Button Style="{StaticResource Btn.Outline}" Width="96" Height="30" Padding="0" Click="OnFetchX"
+                                                    IsEnabled="{Binding CanFetchX}" Visibility="{Binding XLoaded, Converter={StaticResource CollapsedWhen}}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <local:PathIcon Data="{StaticResource Geo.Download}" Width="13" Height="13" StrokeThickness="1.4" />
+                                                    <TextBlock Text="{Binding XButtonText}" Margin="6,0,0,0" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Style="{StaticResource Btn.Outline}" Width="96" Height="30" Padding="0" Click="OnFetchX"
+                                                    Visibility="{Binding XLoaded, Converter={StaticResource VisibleWhen}}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <local:PathIcon Data="{StaticResource Geo.Refresh}" Width="13" Height="13" StrokeThickness="1.4" />
+                                                    <TextBlock Text="Refresh" Margin="6,0,0,0" />
+                                                </StackPanel>
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
 
                                     <StackPanel Margin="16,0" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding XTitle}" FontSize="14" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding XSubtitle}" Margin="0,2,0,0" Foreground="{StaticResource Subtle}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding XSubtitle}" Margin="0,2,0,0" Foreground="{StaticResource Subtle}" TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding XLoaded, Converter={StaticResource CollapsedWhen}}" />
+                                        <TextBlock Margin="0,2,0,0" Foreground="{StaticResource Subtle}" TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding XLoaded, Converter={StaticResource VisibleWhen}}">
+                                            <Run Text="{Binding XRecordsText, Mode=OneWay}" /><Run Text="{Binding XRouteText, Mode=OneWay}" FontWeight="Medium"
+                                                 Foreground="{StaticResource Muted}" /><Run Text="{Binding XAgeText, Mode=OneWay}" />
+                                        </TextBlock>
                                     </StackPanel>
                                 </DockPanel>
                             </Border>

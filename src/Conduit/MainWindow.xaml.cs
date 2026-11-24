@@ -110,6 +110,14 @@ public partial class MainWindow : Window
 
     private void OnCloseWindow(object sender, RoutedEventArgs e) => SystemCommands.CloseWindow(this);
 
+    /// <summary>Run pipelines / Ctrl+Enter: a path still being typed counts, and paths still being checked on disk are waited for.</summary>
+    private async Task RunAfterPathsAsync()
+    {
+        await Setup.CommitTypedPathAsync();
+        await _ws.WhenPathsChecked();
+        _ws.StartRun();
+    }
+
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (BusyOverlay.IsVisible)
@@ -127,7 +135,7 @@ public partial class MainWindow : Window
         }
         if (Keyboard.Modifiers != ModifierKeys.Control) return;
         if (e.Key == Key.O && _ws.IsSetup) Setup.PickProjectFolder();
-        else if (e.Key == Key.Enter && _ws.IsSetup) _ws.StartRun();
+        else if (e.Key == Key.Enter && _ws.IsSetup) _ = RunAfterPathsAsync();
         else if (e.Key is Key.L or Key.Oem3 && _ws.IsRun) _ws.ToggleLogs();
         else return;
         e.Handled = true;
@@ -140,7 +148,7 @@ public partial class MainWindow : Window
         if (_ws.IsFinished) _ws.NewRun();
     }
 
-    private void OnRunClick(object sender, RoutedEventArgs e) => _ws.StartRun();
+    private void OnRunClick(object sender, RoutedEventArgs e) => _ = RunAfterPathsAsync();
 
     private void OnToggleLogs(object sender, RoutedEventArgs e) => _ws.ToggleLogs();
 
